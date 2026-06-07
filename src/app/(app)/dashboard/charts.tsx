@@ -17,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useRouter } from "next/navigation";
 import type { BreakdownSlice } from "@/lib/insights/networth";
 import { formatUSD, formatRatioPct } from "@/lib/format";
 
@@ -30,10 +31,19 @@ const CHART_COLORS = [
 ];
 
 /** Where money sits — donut of a breakdown (asset class / portfolio). */
-export function AllocationPie({ slices }: { slices: BreakdownSlice[] }) {
+export function AllocationPie({
+  slices,
+  href,
+}: {
+  slices: BreakdownSlice[];
+  /** When set, slices + legend rows link here (e.g. a portfolio page). */
+  href?: string;
+}) {
+  const router = useRouter();
   if (slices.length === 0) {
     return <ChartEmpty label="No assets to allocate yet." />;
   }
+  const go = href ? () => router.push(href) : undefined;
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
       <ResponsiveContainer width="100%" height={200} className="max-w-[220px]">
@@ -46,6 +56,8 @@ export function AllocationPie({ slices }: { slices: BreakdownSlice[] }) {
             outerRadius={85}
             paddingAngle={2}
             strokeWidth={0}
+            onClick={go}
+            className={href ? "cursor-pointer" : undefined}
           >
             {slices.map((s, i) => (
               <Cell key={s.key} fill={CHART_COLORS[i % CHART_COLORS.length]} />
@@ -66,7 +78,13 @@ export function AllocationPie({ slices }: { slices: BreakdownSlice[] }) {
       </ResponsiveContainer>
       <ul className="flex-1 space-y-2 text-sm">
         {slices.map((s, i) => (
-          <li key={s.key} className="flex items-center justify-between gap-3">
+          <li
+            key={s.key}
+            onClick={go}
+            className={`flex items-center justify-between gap-3${
+              href ? " hover:text-foreground cursor-pointer" : ""
+            }`}
+          >
             <span className="flex items-center gap-2">
               <span
                 className="inline-block size-2.5 rounded-full"

@@ -38,7 +38,7 @@ import {
   ensurePrices,
   priceOnOrBefore,
 } from "@/lib/price/history";
-import type { AssetRange, AssetSeriesPoint } from "./types";
+import { ASSET_RANGES, type AssetRange, type AssetSeriesPoint } from "./types";
 
 export { ASSET_RANGES, parseRange } from "./types";
 export type { AssetRange, AssetSeriesPoint } from "./types";
@@ -70,6 +70,12 @@ export interface AssetDetail {
   pnlKnown: boolean;
   transactions: TradeRow[];
   series: AssetSeriesPoint[];
+  /**
+   * P&L return % per range (TradingView-style range buttons): how much total P&L
+   * grew over each window, as a % of the cost basis at the window's start. Null
+   * when the asset is unpriceable or has no cost basis to measure against.
+   */
+  rangeChanges: Record<AssetRange, number | null>;
 }
 
 /** Days between sampled series points, per range — keeps history calls bounded. */
@@ -247,6 +253,27 @@ export async function getAssetDetail(
   // with no trade history still values correctly.
   const marketValue = livePrice !== null ? amountHeld * livePrice : null;
 
+  // --- P&L return % per range (range-button labels) ---
+  // How much total P&L grew over each window, as a % of the cost basis at the
+  // window's start: (totalNow − totalAtStart) / costBasisAtStart. Needs both a
+  // live price and a buildable ledger; otherwise every range is unknown.
+  const rangeChanges = {} as Record<AssetRange, number | null>;
+  if (pnlKnown && current.totalPnl != null) {
+    const rangeStarts = ASSET_RANGES.map((r) => rangeStartFor(r, earliestTrade));
+    await ensurePrices(histMap, ledgerTicker, rangeStarts);
+    ASSET_RANGES.forEach((r, i) => {
+      rangeChanges[r] = pnlReturnOverWindow(
+        events,
+        rangeStarts[i],
+        lookup,
+        current.totalPnl!,
+        current.costBasis,
+      );
+    });
+  } else {
+    for (const r of ASSET_RANGES) rangeChanges[r] = null;
+  }
+
   return {
     symbol: rawUpper,
     displayName: resolved.displayName,
@@ -265,7 +292,46 @@ export async function getAssetDetail(
     pnlKnown,
     transactions,
     series,
+    rangeChanges,
   };
+}
+
+/**
+ * P&L return over a window: how much total P&L grew from `startDate` to now,
+ * as a fraction (×100) of the cost basis at the window's start.
+ *
+ *   (totalNow − totalAtStart) / costBasisAtStart × 100
+ *
+ * Replays the ledger up to `startDate` and prices it at that date. Returns null
+ * when the start can't be priced (held shares, no historical close) or there's
+ * no capital base to divide by (falls back to the current cost basis if the
+ * position was opened entirely within the window).
+ */
+function pnlReturnOverWindow(
+  events: TradeEventInput[],
+  startDate: string,
+  lookup: (date: string) => number | null,
+  totalNow: number,
+  costNow: number,
+): number | null {
+  const upTo = events.filter((e) => e.ts.slice(0, 10) <= startDate);
+  let start: LedgerPosition;
+  try {
+    start = buildLedger(upTo, lookup)[0] ?? { ticker: "", shares: 0, costBasis: 0, realizedPnl: 0 };
+  } catch {
+    return null;
+  }
+  let totalStart: number;
+  if (start.shares === 0) {
+    totalStart = start.realizedPnl; // closed/empty — no price needed
+  } else {
+    const startPrice = lookup(startDate);
+    if (startPrice == null) return null; // held but unpriceable at start
+    totalStart = start.realizedPnl + (start.shares * startPrice - start.costBasis);
+  }
+  const denom = start.costBasis > 0 ? start.costBasis : costNow;
+  if (!(denom > 0)) return null;
+  return ((totalNow - totalStart) / denom) * 100;
 }
 
 /** Replay the ledger at each sampled date to get price + P&L over time. */

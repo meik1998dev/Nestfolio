@@ -28,9 +28,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getPnl, type PnlView } from "@/lib/pnl/pnl";
 import {
   getPortfolioPerformance,
+  getTimeframePnl,
   parsePerfRange,
   type PerformanceView,
 } from "@/lib/insights/performance";
+import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
+import { PnlTimeframeCards } from "./pnl-timeframe-cards";
 import { RecomputeButton } from "./recompute-button";
 
 export default async function PnlPage({
@@ -43,10 +46,24 @@ export default async function PnlPage({
     data: { user },
   } = await supabase.auth.getUser();
   const { range } = await searchParams;
-  const [view, performance] = await Promise.all([
+  const [view, performance, windowed] = await Promise.all([
     getPnl(user!.id),
     getPortfolioPerformance(parsePerfRange(range)),
+    getTimeframePnl(),
   ]);
+
+  // "All" is the authoritative cumulative rollup (cost_basis); the windowed
+  // figures are period deltas from the ledger replay.
+  const timeframes: TimeframePnl[] = [
+    {
+      timeframe: "all",
+      realized: view.rollup.realized,
+      unrealized: view.rollup.unrealized,
+      total: view.rollup.total,
+      partial: view.rollup.hasMissingPrices,
+    },
+    ...windowed,
+  ];
 
   return (
     <>
@@ -62,68 +79,12 @@ export default async function PnlPage({
       ) : (
         <>
           <ReconciliationBanner view={view} />
-          <HeadlineCards view={view} />
+          <PnlTimeframeCards data={timeframes} />
           <PerformanceCard performance={performance} />
           <HoldingsTable view={view} />
         </>
       )}
     </>
-  );
-}
-
-function HeadlineCards({ view }: { view: PnlView }) {
-  const { realized, unrealized, total, hasMissingPrices } = view.rollup;
-  return (
-    <div className="mb-6 grid gap-4 sm:grid-cols-3">
-      <MetricCard
-        label="Realized PnL"
-        value={realized}
-        hint="Locked-in gains from disposals."
-      />
-      <MetricCard
-        label="Unrealized PnL"
-        value={unrealized}
-        hint={
-          hasMissingPrices
-            ? "Paper gains at live prices — some prices unavailable."
-            : "Paper gains on open positions at live prices."
-        }
-      />
-      <MetricCard
-        label="Total PnL"
-        value={total}
-        hint="Realized + unrealized."
-        emphasize
-      />
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  hint,
-  emphasize,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  emphasize?: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardDescription>{label}</CardDescription>
-        <CardTitle
-          className={`tabular-nums ${emphasize ? "text-3xl" : "text-2xl"} ${pnlColor(value)}`}
-        >
-          {formatUSD(value, { signed: true })}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground text-xs">{hint}</p>
-      </CardContent>
-    </Card>
   );
 }
 

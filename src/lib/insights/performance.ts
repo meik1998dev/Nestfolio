@@ -26,6 +26,7 @@ import {
 } from "@/lib/pnl/costbasis";
 import type { TradeEventInput, TradeEventKind } from "@/lib/pnl/classify";
 import {
+  isoDay,
   todayIso,
   rangeStart,
   sampleDates,
@@ -33,6 +34,10 @@ import {
   ensurePrices,
   priceOnOrBefore,
 } from "@/lib/price/history";
+import type {
+  PnlTimeframe,
+  TimeframePnl,
+} from "@/lib/pnl/timeframe.types";
 import type { PerfPoint, PerfRange } from "./performance.types";
 
 export type { PerfPoint, PerfRange } from "./performance.types";
@@ -68,88 +73,24 @@ export async function getPortfolioPerformance(
   range: PerfRange,
 ): Promise<PerformanceView> {
   const supabase = await createClient();
-
-  const [manual, walletTrades] = await Promise.all([
-    listTransactions(),
-    listWalletTrades(),
-  ]);
-
-  const manualRows: TradeRow[] = manual.map((t) => ({
-    id: t.id,
-    date: t.date,
-    type: t.type,
-    asset: t.asset,
-    amount: Number(t.amount),
-    price: t.price != null ? Number(t.price) : null,
-    value: t.price != null ? Number(t.price) * Number(t.amount) : null,
-    source: "manual" as const,
-    note: t.note,
-  }));
-
-  // Tag every trade with its pricing ticker; drop unpriceable assets (spam /
-  // unknown tokens) — they can't be valued or contribute P&L.
-  const trades: TaggedTrade[] = [...manualRows, ...walletTrades]
-    .map((row) => {
-      const ticker = resolveToken(row.asset).ticker;
-      return ticker ? { row, ticker: ticker.toUpperCase() } : null;
-    })
-    .filter((t): t is TaggedTrade => t !== null);
+  const { trades, events, tickers, earliest } = await loadTradeEvents();
 
   if (trades.length === 0) {
     return { range, series: [], empty: true };
   }
 
-  const events: TradeEventInput[] = trades.map(({ row, ticker }) => ({
-    type: row.type as TradeEventKind,
-    ticker,
-    shares: row.amount,
-    usdValue: row.value ?? undefined,
-    ts: row.date,
-    tx_hash: row.id,
-  }));
-
-  const tickers = [...new Set(trades.map((t) => t.ticker))];
-  const earliest = trades.reduce<string | null>(
-    (min, t) => (min === null || t.row.date < min ? t.row.date : min),
-    null,
-  );
   const startIso = rangeStart(range, earliest);
   const today = todayIso();
   const axis = sampleDates(startIso, today, STEP_DAYS[range]);
 
-  // --- Historical closes per ticker over the axis + any 1-leg event dates ---
-  const histByTicker = new Map<string, Map<string, number>>();
-  await Promise.all(
-    tickers.map(async (ticker) => {
-      const map = await loadHistory(supabase, ticker, startIso, today);
-      // Seed captured 1-leg (delivery/send) prices so the ledger can price them
-      // even if a historical re-fetch fails.
-      for (const { row, ticker: tk } of trades) {
-        if (
-          tk === ticker &&
-          (row.type === "delivery" || row.type === "send") &&
-          row.price != null
-        ) {
-          const d = row.date.slice(0, 10);
-          if (!map.has(d)) map.set(d, row.price);
-        }
-      }
-      const onLegDates = trades
-        .filter(
-          (t) =>
-            t.ticker === ticker &&
-            (t.row.type === "delivery" || t.row.type === "send"),
-        )
-        .map((t) => t.row.date.slice(0, 10));
-      await ensurePrices(map, ticker, [...axis, ...onLegDates]);
-      histByTicker.set(ticker, map);
-    }),
+  const histLookup = await loadHistories(
+    supabase,
+    trades,
+    tickers,
+    startIso,
+    today,
+    axis,
   );
-
-  const histLookup = (ticker: string, date: string): number | null => {
-    const map = histByTicker.get(ticker);
-    return map ? priceOnOrBefore(map, date) : null;
-  };
 
   const liveByTicker = await readLivePrices(supabase, tickers);
 
@@ -199,6 +140,215 @@ export async function getPortfolioPerformance(
   }
 
   return { range, series, empty: false };
+}
+
+interface LoadedTrades {
+  trades: TaggedTrade[];
+  events: TradeEventInput[];
+  tickers: string[];
+  earliest: string | null;
+}
+
+/**
+ * Load manual + wallet trades, tag each with its pricing ticker (dropping
+ * unpriceable spam / unknown tokens), and derive the classified event stream the
+ * ledger replays. Shared by the performance series and the timeframe PnL.
+ */
+async function loadTradeEvents(): Promise<LoadedTrades> {
+  const [manual, walletTrades] = await Promise.all([
+    listTransactions(),
+    listWalletTrades(),
+  ]);
+
+  const manualRows: TradeRow[] = manual.map((t) => ({
+    id: t.id,
+    date: t.date,
+    type: t.type,
+    asset: t.asset,
+    amount: Number(t.amount),
+    price: t.price != null ? Number(t.price) : null,
+    value: t.price != null ? Number(t.price) * Number(t.amount) : null,
+    source: "manual" as const,
+    note: t.note,
+  }));
+
+  const trades: TaggedTrade[] = [...manualRows, ...walletTrades]
+    .map((row) => {
+      const ticker = resolveToken(row.asset).ticker;
+      return ticker ? { row, ticker: ticker.toUpperCase() } : null;
+    })
+    .filter((t): t is TaggedTrade => t !== null);
+
+  const events: TradeEventInput[] = trades.map(({ row, ticker }) => ({
+    type: row.type as TradeEventKind,
+    ticker,
+    shares: row.amount,
+    usdValue: row.value ?? undefined,
+    ts: row.date,
+    tx_hash: row.id,
+  }));
+
+  const tickers = [...new Set(trades.map((t) => t.ticker))];
+  const earliest = trades.reduce<string | null>(
+    (min, t) => (min === null || t.row.date < min ? t.row.date : min),
+    null,
+  );
+
+  return { trades, events, tickers, earliest };
+}
+
+/**
+ * Load daily-close history per ticker over [startIso, today], seed captured
+ * 1-leg (delivery/send) prices, and back-fill missing closes on each requested
+ * valuation date. Returns a (ticker, date) → close lookup that forward-fills.
+ */
+async function loadHistories(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  trades: TaggedTrade[],
+  tickers: string[],
+  startIso: string,
+  today: string,
+  valuationDates: string[],
+): Promise<(ticker: string, date: string) => number | null> {
+  const histByTicker = new Map<string, Map<string, number>>();
+  await Promise.all(
+    tickers.map(async (ticker) => {
+      const map = await loadHistory(supabase, ticker, startIso, today);
+      // Seed captured 1-leg prices so the ledger can price them even if a
+      // historical re-fetch fails (and even for legs before startIso).
+      for (const { row, ticker: tk } of trades) {
+        if (
+          tk === ticker &&
+          (row.type === "delivery" || row.type === "send") &&
+          row.price != null
+        ) {
+          const d = row.date.slice(0, 10);
+          if (!map.has(d)) map.set(d, row.price);
+        }
+      }
+      const onLegDates = trades
+        .filter(
+          (t) =>
+            t.ticker === ticker &&
+            (t.row.type === "delivery" || t.row.type === "send"),
+        )
+        .map((t) => t.row.date.slice(0, 10));
+      await ensurePrices(map, ticker, [...valuationDates, ...onLegDates]);
+      histByTicker.set(ticker, map);
+    }),
+  );
+
+  return (ticker: string, date: string): number | null => {
+    const map = histByTicker.get(ticker);
+    return map ? priceOnOrBefore(map, date) : null;
+  };
+}
+
+/** Windowed timeframes and their look-back offset from today. */
+const TIMEFRAME_WINDOWS: ReadonlyArray<{
+  tf: PnlTimeframe;
+  days?: number;
+  months?: number;
+}> = [
+  { tf: "1D", days: 1 },
+  { tf: "7D", days: 7 },
+  { tf: "1M", months: 1 },
+  { tf: "3M", months: 3 },
+  { tf: "1Y", months: 12 },
+];
+
+/** YYYY-MM-DD `days`/`months` before `today` (UTC). */
+function baselineDate(
+  today: string,
+  window: { days?: number; months?: number },
+): string {
+  const d = new Date(today + "T00:00:00Z");
+  if (window.days) d.setUTCDate(d.getUTCDate() - window.days);
+  if (window.months) d.setUTCMonth(d.getUTCMonth() - window.months);
+  return isoDay(d);
+}
+
+/** Σ realized / (priced) unrealized over the replayed ledger as of `date`. */
+function rollupAsOf(
+  events: TradeEventInput[],
+  date: string,
+  isToday: boolean,
+  histLookup: (ticker: string, date: string) => number | null,
+  liveByTicker: Map<string, number>,
+): { realized: number; unrealized: number; total: number; partial: boolean } {
+  let positions;
+  try {
+    positions = buildLedger(
+      events.filter((e) => e.ts.slice(0, 10) <= date),
+      histLookup,
+    );
+  } catch {
+    // A 1-leg trade in this window has no historical price → treat as partial.
+    return { realized: 0, unrealized: 0, total: 0, partial: true };
+  }
+
+  let realized = 0;
+  let unrealized = 0;
+  let partial = false;
+  for (const pos of positions) {
+    const price = isToday
+      ? (liveByTicker.get(pos.ticker) ?? histLookup(pos.ticker, date))
+      : histLookup(pos.ticker, date);
+    const p = positionPnl(pos, price);
+    realized += p.realizedPnl;
+    if (p.unrealizedPnl !== null) unrealized += p.unrealizedPnl;
+    else if (pos.shares > 0) partial = true;
+  }
+  return { realized, unrealized, total: realized + unrealized, partial };
+}
+
+/**
+ * Period PnL per windowed timeframe: the change in cumulative realized /
+ * unrealized / total between the window's start and now. Total PnL is continuous
+ * across buys/sells (a sell just moves value from unrealized to realized), so the
+ * delta is the true PnL *generated during* the window.
+ *
+ * The "all" timeframe is the cumulative rollup itself and is supplied separately
+ * by the caller (from `getPnl`, the authoritative cost_basis path). Returns an
+ * empty array when there are no priceable trades.
+ */
+export async function getTimeframePnl(): Promise<TimeframePnl[]> {
+  const supabase = await createClient();
+  const { trades, events, tickers } = await loadTradeEvents();
+  if (trades.length === 0) return [];
+
+  const today = todayIso();
+  const baselines = TIMEFRAME_WINDOWS.map((w) => baselineDate(today, w));
+  const startIso = baselines.reduce((min, d) => (d < min ? d : min), today);
+
+  const histLookup = await loadHistories(
+    supabase,
+    trades,
+    tickers,
+    startIso,
+    today,
+    [...baselines, today],
+  );
+  const liveByTicker = await readLivePrices(supabase, tickers);
+
+  const now = rollupAsOf(events, today, true, histLookup, liveByTicker);
+
+  return TIMEFRAME_WINDOWS.map((w, i) => {
+    const base = rollupAsOf(
+      events,
+      baselines[i],
+      false,
+      histLookup,
+      liveByTicker,
+    );
+    return {
+      timeframe: w.tf,
+      realized: now.realized - base.realized,
+      unrealized: now.unrealized - base.unrealized,
+      total: now.total - base.total,
+      partial: now.partial || base.partial,
+    };
+  });
 }
 
 /** Read cached live prices for the given tickers into a ticker→price map. */

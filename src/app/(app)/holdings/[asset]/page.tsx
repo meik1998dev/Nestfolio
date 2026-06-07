@@ -69,10 +69,12 @@ export default async function AssetPage({
 }) {
   const { asset } = await params;
   const { range } = await searchParams;
-  const detail = await getAssetDetail(
-    decodeURIComponent(asset),
-    parseRange(range),
-  );
+  // Original-cased symbol from the URL — range links must reuse it verbatim.
+  // Tokenized stocks only resolve with their exact casing (e.g. "NVDAon"; the
+  // `on` suffix must stay lower-case), so linking by the uppercased display
+  // symbol would 404 into the "unknown" state.
+  const assetParam = decodeURIComponent(asset);
+  const detail = await getAssetDetail(assetParam, parseRange(range));
   if (!detail) notFound();
 
   const heldLabel =
@@ -183,11 +185,12 @@ export default async function AssetPage({
           </CardHeader>
           <CardContent>
             <AssetChart
-              symbol={detail.symbol}
+              linkSymbol={assetParam}
               series={detail.series}
               range={detail.range}
               hasPrice={detail.hasPrice}
               pnlKnown={detail.pnlKnown}
+              rangeChanges={detail.rangeChanges}
             />
           </CardContent>
         </Card>

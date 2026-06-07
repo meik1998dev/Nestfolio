@@ -52,19 +52,26 @@ function fullDate(iso: string): string {
 }
 
 export function AssetChart({
-  symbol,
+  linkSymbol,
   series,
   range,
   hasPrice,
   pnlKnown,
+  rangeChanges,
 }: {
-  symbol: string;
+  /** Original-cased URL symbol used for range links (preserves casing so
+   *  tokenized stocks like "NVDAon" keep resolving). */
+  linkSymbol: string;
   series: AssetSeriesPoint[];
   range: AssetRange;
   hasPrice: boolean;
   pnlKnown: boolean;
+  rangeChanges: Record<AssetRange, number | null>;
 }) {
   const [view, setView] = useState<View>("price");
+
+  // Only show per-range % when at least one range is priceable.
+  const hasPct = ASSET_RANGES.some((r) => rangeChanges[r] != null);
 
   // Span more than one calendar year → put the year on axis ticks.
   const multiYear =
@@ -93,20 +100,42 @@ export function AssetChart({
             P&amp;L
           </ToggleButton>
         </div>
-        {/* Range links — server recomputes the series */}
+        {/* Range links — server recomputes the series. Each shows the P&L
+            return % over that window (TradingView-style). The % row is hidden
+            entirely for unpriceable assets, where every range is unknown. */}
         <div className="flex items-center gap-1">
-          {ASSET_RANGES.map((r) => (
-            <Button
-              key={r}
-              size="xs"
-              variant={r === range ? "secondary" : "ghost"}
-              render={
-                <a href={`/holdings/${encodeURIComponent(symbol)}?range=${r}`}>
-                  {r}
-                </a>
-              }
-            />
-          ))}
+          {ASSET_RANGES.map((r) => {
+            const pct = rangeChanges[r];
+            return (
+              <Button
+                key={r}
+                size="xs"
+                variant={r === range ? "secondary" : "ghost"}
+                className={cn(hasPct && "h-auto flex-col gap-0 py-1")}
+                render={
+                  <a
+                    href={`/holdings/${encodeURIComponent(linkSymbol)}?range=${r}`}
+                  >
+                    <span>{r}</span>
+                    {hasPct && (
+                      <span
+                        className={cn(
+                          "text-[10px] leading-tight font-normal tabular-nums",
+                          pct == null
+                            ? "text-muted-foreground"
+                            : pct >= 0
+                              ? "text-emerald-600 dark:text-emerald-500"
+                              : "text-red-600 dark:text-red-500",
+                        )}
+                      >
+                        {fmtPct(pct)}
+                      </span>
+                    )}
+                  </a>
+                }
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -283,6 +312,12 @@ export function AssetChart({
       )}
     </div>
   );
+}
+
+/** Signed percent for range buttons (e.g. "+5.2%"); "—" when unknown. */
+function fmtPct(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
 }
 
 /** Asset quantity held. */

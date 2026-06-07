@@ -162,7 +162,10 @@ export default async function DashboardPage({
                 <CardDescription>By asset class</CardDescription>
               </CardHeader>
               <CardContent>
-                <AllocationPie slices={summary.breakdowns.byAssetClass} />
+                <AllocationPie
+                  slices={summary.breakdowns.byAssetClass}
+                  href="/portfolios/360f0f48-7d7f-49ab-9e40-98d6e94a07a1"
+                />
               </CardContent>
             </Card>
             <Card>
