@@ -7,15 +7,11 @@
  * so they reflow on resize.
  */
 import {
-  Area,
-  AreaChart,
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import { useRouter } from "next/navigation";
 import type { BreakdownSlice } from "@/lib/insights/networth";
@@ -99,67 +95,6 @@ export function AllocationPie({
         ))}
       </ul>
     </div>
-  );
-}
-
-/** Net-worth history over time (S5.3). */
-export function NetWorthHistory({
-  series,
-}: {
-  series: Array<{ taken_at: string; net_worth: number }>;
-}) {
-  const data = series.map((s) => ({
-    date: new Date(s.taken_at).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }),
-    value: s.net_worth,
-  }));
-  // Trend color: green if net worth ended higher than it started, red if lower.
-  const up = data.length < 2 || data[data.length - 1].value >= data[0].value;
-  const trendColor = up ? "var(--color-emerald-600)" : "var(--color-red-600)";
-  return (
-    <ResponsiveContainer width="100%" height={240}>
-      <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
-        <defs>
-          <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={trendColor} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={trendColor} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <XAxis
-          dataKey="date"
-          tick={{ fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-          minTickGap={24}
-        />
-        <YAxis
-          tickFormatter={(v) => formatUSD(v, { compact: true })}
-          tick={{ fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-          width={56}
-        />
-        <Tooltip
-          content={({ active, payload, label }) =>
-            active && payload?.length ? (
-              <TooltipBox
-                label={String(label)}
-                value={formatUSD(Number(payload[0].value))}
-              />
-            ) : null
-          }
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={trendColor}
-          strokeWidth={2}
-          fill="url(#nwFill)"
-        />
-      </AreaChart>
-    </ResponsiveContainer>
   );
 }
 

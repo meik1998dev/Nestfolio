@@ -1,6 +1,6 @@
 /**
- * Per-portfolio detail (EN3.x). Scopes value, allocation, PnL, value history,
- * and transactions down to one portfolio node and everything nested under it.
+ * Per-portfolio detail (EN3.x). Scopes value, allocation, PnL, and transactions
+ * down to one portfolio node and everything nested under it.
  * Server Component: `getPortfolioDetail` assembles the data; small client charts
  * (reused from the dashboard) render it.
  */
@@ -14,7 +14,6 @@ import {
   Wallet,
   Sparkles,
   PieChart as PieIcon,
-  LineChart as LineIcon,
   ArrowLeftRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -38,7 +37,6 @@ import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty, formatDate, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getPortfolioDetail } from "@/lib/portfolio/detail";
-import { NetWorthHistory } from "../../dashboard/charts";
 import { TargetAllocationPie } from "./allocation";
 import { TargetInput } from "./target-input";
 
@@ -50,11 +48,6 @@ export default async function PortfolioDetailPage({
   const { id } = await params;
   const detail = await getPortfolioDetail(id);
   if (!detail) notFound();
-
-  const series = detail.history.map((h) => ({
-    taken_at: h.taken_at,
-    net_worth: h.value,
-  }));
 
   return (
     <>
@@ -124,42 +117,21 @@ export default async function PortfolioDetailPage({
           />
         </div>
 
-        {/* Allocation + history */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <PieIcon className="text-muted-foreground size-4" />
-                Allocation
-              </CardTitle>
-              <CardDescription>
-                Live allocation (inner ring) vs target (outer ring).
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TargetAllocationPie slices={detail.allocation} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <LineIcon className="text-muted-foreground size-4" />
-                Value history
-              </CardTitle>
-              <CardDescription>Builds up as daily snapshots accrue.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {series.length >= 2 ? (
-                <NetWorthHistory series={series} />
-              ) : (
-                <p className="text-muted-foreground py-10 text-center text-sm">
-                  History builds as snapshots accrue (one is taken automatically
-                  each day).
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* Allocation */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PieIcon className="text-muted-foreground size-4" />
+              Allocation
+            </CardTitle>
+            <CardDescription>
+              Live allocation (inner ring) vs target (outer ring).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TargetAllocationPie slices={detail.allocation} />
+          </CardContent>
+        </Card>
 
         {/* Holdings */}
         <Card>

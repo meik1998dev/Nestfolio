@@ -3,7 +3,6 @@ import {
   FolderTree,
   ArrowLeftRight,
   Wallet,
-  TrendingUp,
   Coins,
   type LucideIcon,
 } from "lucide-react";
@@ -22,5 +21,4 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/portfolios", label: "Portfolios", icon: FolderTree },
-  { href: "/pnl", label: "Profit & Loss", icon: TrendingUp },
 ];

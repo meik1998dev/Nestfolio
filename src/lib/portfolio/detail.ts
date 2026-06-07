@@ -3,20 +3,16 @@
 /**
  * Per-portfolio detail assembly (EN3.x). Scopes the global net-worth / PnL /
  * trade-ledger data down to a single portfolio node and everything nested under
- * it, so a child portfolio gets its own value, allocation, PnL, value history,
- * and transactions.
+ * it, so a child portfolio gets its own value, allocation, PnL, and
+ * transactions.
  *
  * Scoping strategy:
  *   - SUBTREE = the node plus every descendant (via the pure tree builder).
  *   - Holdings are scoped by `portfolio_id ∈ subtreeIds`.
  *   - PnL (keyed by resolved ticker) and transactions (keyed by raw asset) are
  *     scoped by matching against the subtree holdings' ticker / symbol sets.
- *   - Value history is reconstructed from each snapshot's stored
- *     `breakdown.byPortfolio` slices — summing the slices whose key is a
- *     subtree portfolio id. (Own-value per node, the same figure the snapshot
- *     recorded; good enough for a trend line.)
  *
- * Degrades gracefully: missing prices → 0 value, no snapshots → empty history.
+ * Degrades gracefully: missing prices → 0 value.
  */
 import { createClient } from "@/lib/supabase/server";
 import type { Holding } from "@/lib/types";
@@ -81,8 +77,6 @@ export interface PortfolioDetail {
   pnl: PnlRollup;
   /** Subtree holdings with value + per-holding PnL, biggest value first. */
   holdings: DetailHolding[];
-  /** Value-over-time for this subtree, oldest first. */
-  history: Array<{ taken_at: string; value: number }>;
   /** Trades (manual + wallet) touching assets held in this subtree, newest first. */
   transactions: TradeRow[];
   /** True when some subtree holding has no resolvable live price. */
@@ -233,9 +227,6 @@ export async function getPortfolioDetail(
     })
     .sort((a, b) => b.value - a.value);
 
-  // --- Value history from stored snapshot breakdowns ---
-  const history = await subtreeHistory(supabase, ids);
-
   // --- Transactions touching subtree assets ---
   const [manual, walletTrades] = await Promise.all([
     listTransactions(),
@@ -267,34 +258,9 @@ export async function getPortfolioDetail(
     allocation,
     pnl,
     holdings: detailHoldings,
-    history,
     transactions,
     hasMissingPrices: subtreeHoldings.some(
       (h) => h.amount > 0 && (holdingValues.get(h.id) ?? 0) === 0,
     ),
   };
-}
-
-/** Per-snapshot subtree value: Σ byPortfolio slices whose key ∈ subtree ids. */
-async function subtreeHistory(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  ids: Set<string>,
-): Promise<Array<{ taken_at: string; value: number }>> {
-  const { data } = await supabase
-    .from("snapshots")
-    .select("taken_at, breakdown")
-    .order("taken_at", { ascending: true });
-
-  const rows = (data ?? []) as Array<{
-    taken_at: string;
-    breakdown: { byPortfolio?: BreakdownSlice[] } | null;
-  }>;
-
-  return rows.map((r) => {
-    const slices = r.breakdown?.byPortfolio ?? [];
-    const value = slices
-      .filter((s) => ids.has(s.key))
-      .reduce((sum, s) => sum + Number(s.value), 0);
-    return { taken_at: r.taken_at, value };
-  });
 }

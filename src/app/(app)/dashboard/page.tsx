@@ -7,15 +7,14 @@
  * a friendly history empty state.
  */
 import {
-  TrendingUp,
-  TrendingDown,
   Wallet,
   Coins,
   PieChart as PieIcon,
   LineChart as LineIcon,
-  Sparkles,
   ArrowUpRight,
   ArrowDownRight,
+  CircleCheck,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
@@ -26,19 +25,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatUSD, formatRatioPct, pnlColor } from "@/lib/format";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AssetLink } from "@/components/asset-link";
+import { formatUSD, formatQty, formatRatioPct, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getNetWorthSummary } from "@/lib/insights/networth.server";
 import {
   getPortfolioPerformance,
+  getTimeframePnl,
   parsePerfRange,
 } from "@/lib/insights/performance";
-import { getPnl } from "@/lib/pnl/pnl";
+import { getPnl, type PnlView } from "@/lib/pnl/pnl";
+import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
 import { createClient } from "@/lib/supabase/server";
 import { PerformanceChart } from "@/components/performance-chart";
 import { AllocationPie } from "./charts";
-import { ProjectionPanel } from "./projection";
 import { SnapshotButton } from "./snapshot-button";
+import { PnlTimeframeCards } from "./pnl-timeframe-cards";
+import { RecomputeButton } from "./recompute-button";
 
 export default async function DashboardPage({
   searchParams,
@@ -52,13 +63,27 @@ export default async function DashboardPage({
   const userId = user!.id;
 
   const { range } = await searchParams;
-  const [summary, performance, pnl] = await Promise.all([
+  const [summary, performance, pnl, windowed] = await Promise.all([
     getNetWorthSummary(),
     getPortfolioPerformance(parsePerfRange(range)),
     getPnl(userId),
+    getTimeframePnl(),
   ]);
 
   const hasData = summary.holdingsValue > 0 || !pnl.empty;
+
+  // "All" is the authoritative cumulative rollup (cost_basis); the windowed
+  // figures are period deltas from the ledger replay.
+  const timeframes: TimeframePnl[] = [
+    {
+      timeframe: "all",
+      realized: pnl.rollup.realized,
+      unrealized: pnl.rollup.unrealized,
+      total: pnl.rollup.total,
+      partial: pnl.rollup.hasMissingPrices,
+    },
+    ...windowed,
+  ];
 
   return (
     <>
@@ -67,12 +92,15 @@ export default async function DashboardPage({
         description="Everything you hold, valued live — at a glance."
       >
         <SnapshotButton variant="outline" label="Snapshot" />
+        <RecomputeButton />
       </PageHeader>
 
       {!hasData ? (
         <FirstRunEmptyState />
       ) : (
         <div className="space-y-6">
+          <ReconciliationBanner view={pnl} />
+
           {/* Hero: portfolio value + MoM */}
           <Card>
             <CardHeader className="pb-2">
@@ -118,41 +146,20 @@ export default async function DashboardPage({
             </CardContent>
           </Card>
 
-          {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {/* Invested */}
+          <div className="grid gap-4">
             <StatCard
               icon={<Coins className="size-4" />}
               label="Invested"
               value={formatUSD(summary.holdingsValue)}
             />
-            <StatCard
-              icon={
-                pnl.rollup.total >= 0 ? (
-                  <TrendingUp className="size-4" />
-                ) : (
-                  <TrendingDown className="size-4" />
-                )
-              }
-              label="Total P&L"
-              value={formatUSD(pnl.rollup.total, { signed: true })}
-              valueClass={pnlColor(pnl.rollup.total)}
-            />
-            <StatCard
-              icon={<Wallet className="size-4" />}
-              label="Realized P&L"
-              value={formatUSD(pnl.rollup.realized, { signed: true })}
-              valueClass={pnlColor(pnl.rollup.realized)}
-            />
-            <StatCard
-              icon={<Sparkles className="size-4" />}
-              label="Unrealized P&L"
-              value={formatUSD(pnl.rollup.unrealized, { signed: true })}
-              valueClass={pnlColor(pnl.rollup.unrealized)}
-            />
           </div>
 
+          {/* P&L by timeframe: Realized / Unrealized / Total with tabs */}
+          {!pnl.empty && <PnlTimeframeCards data={timeframes} />}
+
           {/* Allocation + Pie */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -166,20 +173,6 @@ export default async function DashboardPage({
                   slices={summary.breakdowns.byAssetClass}
                   href="/portfolios/360f0f48-7d7f-49ab-9e40-98d6e94a07a1"
                 />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Sparkles className="text-muted-foreground size-4" />
-                  Where you&apos;re headed
-                </CardTitle>
-                <CardDescription>
-                  Projected value at your savings rate.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ProjectionPanel startingNetWorth={summary.netWorth} />
               </CardContent>
             </Card>
           </div>
@@ -214,6 +207,9 @@ export default async function DashboardPage({
               )}
             </CardContent>
           </Card>
+
+          {/* Holdings: average-cost basis per ticker */}
+          {!pnl.empty && <HoldingsTable view={pnl} />}
         </div>
       )}
     </>
@@ -248,6 +244,120 @@ function StatCard({
         {sub && <p className="text-muted-foreground text-xs">{sub}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+function HoldingsTable({ view }: { view: PnlView }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Holdings</CardTitle>
+        <CardDescription>
+          Average-cost basis. Deliveries are priced at the historical equity
+          price on their delivery date (approximate to the day).
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Ticker</TableHead>
+              <TableHead className="text-right">Shares</TableHead>
+              <TableHead className="text-right">Avg cost</TableHead>
+              <TableHead className="text-right">Cost basis</TableHead>
+              <TableHead className="text-right">Live price</TableHead>
+              <TableHead className="text-right">Market value</TableHead>
+              <TableHead className="text-right">Unrealized</TableHead>
+              <TableHead className="text-right">Realized</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {view.holdings.map((h) => (
+              <TableRow key={h.ticker}>
+                <TableCell className="font-medium">
+                  <AssetLink symbol={h.ticker} />
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatQty(h.shares)}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-right tabular-nums">
+                  {h.shares > 0 ? formatUSD(h.avgCost) : "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatUSD(h.costBasis)}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-right tabular-nums">
+                  {h.livePrice !== null ? formatUSD(h.livePrice) : "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {h.marketValue !== null ? formatUSD(h.marketValue) : "—"}
+                </TableCell>
+                <TableCell
+                  className={`text-right tabular-nums ${h.unrealizedPnl !== null ? pnlColor(h.unrealizedPnl) : ""}`}
+                >
+                  {h.unrealizedPnl !== null
+                    ? formatUSD(h.unrealizedPnl, { signed: true })
+                    : "—"}
+                </TableCell>
+                <TableCell
+                  className={`text-right tabular-nums ${pnlColor(h.realizedPnl)}`}
+                >
+                  {formatUSD(h.realizedPnl, { signed: true })}
+                </TableCell>
+                <TableCell
+                  className={`text-right font-medium tabular-nums ${h.totalPnl !== null ? pnlColor(h.totalPnl) : ""}`}
+                >
+                  {h.totalPnl !== null
+                    ? formatUSD(h.totalPnl, { signed: true })
+                    : "—"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReconciliationBanner({ view }: { view: PnlView }) {
+  const r = view.reconciliation;
+  if (!r) return null;
+
+  if (r.pass) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-3 text-sm">
+        <CircleCheck className="size-4 shrink-0 text-emerald-600" />
+        <span className="text-muted-foreground">
+          Cash reconciles — deposits {formatUSD(r.deposited)} − buys{" "}
+          {formatUSD(r.spentOnBuys)} + sells {formatUSD(r.fromSells)} ={" "}
+          {formatUSD(r.expectedBalance)} (balance {formatUSD(r.actualBalance)}).
+        </span>
+      </div>
+    );
+  }
+
+  // Failed guard: surface the numbers, never a (possibly wrong) PnL silently.
+  return (
+    <div className="border-destructive/30 bg-destructive/5 flex items-start gap-3 rounded-lg border p-4 text-sm">
+      <AlertTriangle className="text-destructive mt-0.5 size-4 shrink-0" />
+      <div className="space-y-1">
+        <p className="text-destructive font-medium">
+          Cash does not reconcile — figures may be unreliable
+        </p>
+        <p className="text-muted-foreground">
+          Expected balance {formatUSD(r.expectedBalance)} (deposits{" "}
+          {formatUSD(r.deposited)} − buys {formatUSD(r.spentOnBuys)} + sells{" "}
+          {formatUSD(r.fromSells)}) vs actual {formatUSD(r.actualBalance)} — off
+          by{" "}
+          <span className="text-destructive font-semibold tabular-nums">
+            {formatUSD(r.difference)}
+          </span>
+          . Re-sync the wallet; the transfer parse may be incomplete.
+        </p>
+      </div>
+    </div>
   );
 }
 
