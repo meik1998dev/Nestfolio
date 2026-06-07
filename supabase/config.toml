@@ -1,0 +1,7 @@
+project_id = "nestfolio"
+
+[db]
+major_version = 15
+
+[db.migrations]
+schema_paths = []
