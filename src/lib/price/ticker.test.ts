@@ -1,0 +1,75 @@
+import { describe, it, expect } from "vitest";
+import {
+  tokenToTicker,
+  resolveToken,
+  isTokenizedStock,
+  isStablecoin,
+} from "./ticker";
+
+describe("isTokenizedStock", () => {
+  it("detects Ondo …on tokens", () => {
+    expect(isTokenizedStock("NVDAon")).toBe(true);
+    expect(isTokenizedStock("GOOGLon")).toBe(true);
+    expect(isTokenizedStock("METAon")).toBe(true);
+  });
+
+  it("rejects non-tokenized symbols", () => {
+    expect(isTokenizedStock("USDT")).toBe(false);
+    expect(isTokenizedStock("BNB")).toBe(false);
+    expect(isTokenizedStock("PAXG")).toBe(false);
+  });
+});
+
+describe("tokenToTicker", () => {
+  it("strips the trailing on", () => {
+    expect(tokenToTicker("NVDAon")).toBe("NVDA");
+    expect(tokenToTicker("GOOGLon")).toBe("GOOGL");
+    expect(tokenToTicker("NVOon")).toBe("NVO");
+  });
+
+  it("returns null for non-stock tokens", () => {
+    expect(tokenToTicker("USDT")).toBeNull();
+    expect(tokenToTicker("BNB")).toBeNull();
+  });
+});
+
+describe("isStablecoin", () => {
+  it("recognizes the cash-equivalents", () => {
+    for (const s of ["USDT", "USDC", "BUSD", "FDUSD"]) {
+      expect(isStablecoin(s)).toBe(true);
+    }
+    expect(isStablecoin("NVDAon")).toBe(false);
+  });
+});
+
+describe("resolveToken", () => {
+  it("resolves tokenized stocks to the equity ticker, never the DEX price", () => {
+    const r = resolveToken("NVDAon");
+    expect(r.kind).toBe("stock");
+    expect(r.ticker).toBe("NVDA");
+    expect(r.issuer).toBe("Ondo Global Markets");
+  });
+
+  it("resolves stablecoins to cash with no ticker", () => {
+    const r = resolveToken("USDT");
+    expect(r.kind).toBe("stablecoin");
+    expect(r.ticker).toBeNull();
+  });
+
+  it("resolves crypto to a Yahoo pair", () => {
+    expect(resolveToken("BNB").ticker).toBe("BNB-USD");
+    expect(resolveToken("BTCB").ticker).toBe("BTC-USD");
+  });
+
+  it("treats PAXG as gold via its deep-liquidity pair", () => {
+    const r = resolveToken("PAXG");
+    expect(r.kind).toBe("gold");
+    expect(r.ticker).toBe("PAXG-USD");
+  });
+
+  it("flags unknown tokens rather than silently mispricing", () => {
+    const r = resolveToken("SCAMTOKEN");
+    expect(r.kind).toBe("unknown");
+    expect(r.ticker).toBeNull();
+  });
+});
