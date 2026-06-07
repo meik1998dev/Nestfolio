@@ -1,0 +1,25 @@
+/**
+ * Client-safe types + constants for the asset detail view. Kept separate from
+ * `detail.ts` so client components (the chart) can import ranges/point shapes
+ * without dragging the server-only assembly (Supabase, price provider) into the
+ * browser bundle.
+ */
+
+/** Chart ranges offered on the asset page (daily granularity — no intraday). */
+export type AssetRange = "1M" | "3M" | "6M" | "1Y" | "Max";
+export const ASSET_RANGES: AssetRange[] = ["1M", "3M", "6M", "1Y", "Max"];
+
+export function parseRange(raw: string | undefined): AssetRange {
+  return ASSET_RANGES.includes(raw as AssetRange) ? (raw as AssetRange) : "1Y";
+}
+
+/** One point on the price + P&L time series. P&L fields are null with no price. */
+export interface AssetSeriesPoint {
+  date: string; // YYYY-MM-DD
+  price: number | null;
+  /** Units of the asset held on this date (position size after that day's trades). */
+  held: number;
+  realized: number;
+  unrealized: number | null;
+  total: number | null;
+}

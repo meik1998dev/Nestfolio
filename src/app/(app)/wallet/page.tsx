@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AssetLink } from "@/components/asset-link";
 import { formatUSD, formatQty, formatDate } from "@/lib/format";
 import type { SyncStatus } from "@/lib/types";
 import {
@@ -170,7 +171,9 @@ export default async function WalletPage() {
 function BalanceRow({ b }: { b: WalletBalanceView }) {
   return (
     <TableRow>
-      <TableCell className="font-medium">{b.asset}</TableCell>
+      <TableCell className="font-medium">
+        <AssetLink symbol={b.asset} />
+      </TableCell>
       <TableCell>
         {b.kind === "stock" ? (
           <Badge variant="outline">{b.ticker} · equity</Badge>

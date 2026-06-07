@@ -1,25 +1,21 @@
 /**
  * Net-worth aggregation (EN5.2) — the single source of truth used by the
- * dashboard, the snapshot job, and the monthly review.
+ * dashboard and the snapshot job.
  *
- *   Net Worth = Σ account cash balances + Σ holding market values − Σ liabilities
+ *   Net Worth = Σ holding market values
  *
- * Everything here is PURE: callers inject already-priced inputs (cash balances,
- * holding USD values, liabilities) so this module never touches the DB or a
- * price feed and stays trivially testable. Server assembly lives in
- * `getNetWorthSummary` (networth.server.ts).
+ * Everything here is PURE: callers inject already-priced inputs (holding USD
+ * values) so this module never touches the DB or a price feed and stays
+ * trivially testable. Server assembly lives in `getNetWorthSummary`
+ * (networth.server.ts).
  */
-import type { Account, AccountType, Holding, Liability } from "@/lib/types";
+import type { Holding } from "@/lib/types";
 import { resolveToken } from "@/lib/price/ticker";
 
-/** The three top-line components of net worth. */
+/** The top-line component of net worth. */
 export interface NetWorthInputs {
-  /** Σ cash balances of real accounts (excludes expense/external sinks). */
-  cash: number;
   /** Σ market value of all holdings (priced; missing prices count as 0). */
   holdingsValue: number;
-  /** Σ outstanding liability balances. */
-  liabilities: number;
 }
 
 /** A single slice of a breakdown — feeds bars and pie charts. */
@@ -36,12 +32,7 @@ export type AssetClass = "cash" | "crypto" | "stock" | "gold" | "other";
 
 /** Pure net worth from injected components. */
 export function computeNetWorth(inputs: NetWorthInputs): number {
-  return inputs.cash + inputs.holdingsValue - inputs.liabilities;
-}
-
-/** Total assets (cash + holdings) — the positive side of the balance. */
-export function totalAssets(inputs: NetWorthInputs): number {
-  return inputs.cash + inputs.holdingsValue;
+  return inputs.holdingsValue;
 }
 
 /**
@@ -62,24 +53,6 @@ export function toBreakdown(
       share: total > 0 ? r.value / total : 0,
     }))
     .sort((a, b) => b.value - a.value);
-}
-
-/** Map an account type to an asset class for the allocation breakdown. */
-export function assetClassForAccountType(type: AccountType): AssetClass {
-  switch (type) {
-    case "cash":
-      return "cash";
-    case "crypto_wallet":
-      return "crypto";
-    case "stock":
-      return "stock";
-    case "gold":
-      return "gold";
-    default:
-      // expense / external accounts hold no wealth — caller filters them out,
-      // but classify defensively as "other".
-      return "other";
-  }
 }
 
 /**
@@ -121,18 +94,14 @@ const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
 };
 
 export interface NetWorthBreakdowns {
-  /** Where assets sit, by asset class (cash + each holding class). */
+  /** Where assets sit, by asset class. */
   byAssetClass: BreakdownSlice[];
   /** Where holdings sit, by their portfolio (unassigned bucketed together). */
   byPortfolio: BreakdownSlice[];
-  /** Asset accounts grouped by account type (cash containers). */
-  byAccountType: BreakdownSlice[];
 }
 
 /** Inputs for the breakdown builder — all pre-derived, no IO. */
 export interface BreakdownInputs {
-  /** Asset accounts (expense/external already removed) + their balances. */
-  accounts: Array<{ account: Account; balance: number }>;
   holdings: Holding[];
   /** holdingId → USD market value. */
   holdingValues: Map<string, number>;
@@ -142,12 +111,10 @@ export interface BreakdownInputs {
 
 /** Build the chart breakdowns for the dashboard (and snapshot payload). */
 export function buildBreakdowns(input: BreakdownInputs): NetWorthBreakdowns {
-  const { accounts, holdings, holdingValues, portfolioNames } = input;
+  const { holdings, holdingValues, portfolioNames } = input;
 
-  // --- By asset class: cash (from accounts) + holdings grouped by class ---
+  // --- By asset class: holdings grouped by class ---
   const classTotals = new Map<AssetClass, number>();
-  const cashTotal = accounts.reduce((s, a) => s + a.balance, 0);
-  if (cashTotal > 0) classTotals.set("cash", cashTotal);
   for (const h of holdings) {
     const cls = assetClassForHolding(h.asset);
     const v = holdingValues.get(h.id) ?? 0;
@@ -157,19 +124,6 @@ export function buildBreakdowns(input: BreakdownInputs): NetWorthBreakdowns {
     [...classTotals.entries()].map(([cls, value]) => ({
       key: cls,
       label: ASSET_CLASS_LABELS[cls],
-      value,
-    })),
-  );
-
-  // --- By account type (cash containers) ---
-  const typeTotals = new Map<AccountType, number>();
-  for (const { account, balance } of accounts) {
-    typeTotals.set(account.type, (typeTotals.get(account.type) ?? 0) + balance);
-  }
-  const byAccountType = toBreakdown(
-    [...typeTotals.entries()].map(([type, value]) => ({
-      key: type,
-      label: ACCOUNT_TYPE_LABELS_SHORT[type],
       value,
     })),
   );
@@ -194,21 +148,7 @@ export function buildBreakdowns(input: BreakdownInputs): NetWorthBreakdowns {
     })),
   );
 
-  return { byAssetClass, byAccountType, byPortfolio };
-}
-
-const ACCOUNT_TYPE_LABELS_SHORT: Record<AccountType, string> = {
-  cash: "Cash",
-  crypto_wallet: "Crypto wallet",
-  gold: "Gold",
-  stock: "Brokerage",
-  expense: "Expense",
-  external: "External",
-};
-
-/** Sum outstanding liability balances. */
-export function sumLiabilities(liabilities: Liability[]): number {
-  return liabilities.reduce((s, l) => s + Number(l.balance), 0);
+  return { byAssetClass, byPortfolio };
 }
 
 /** Month-over-month change vs a prior net worth. Null prior → null change. */

@@ -5,20 +5,8 @@
  */
 
 // --- Enums (see 20260607000100_enums.sql) ---
-export type AccountType =
-  | "cash"
-  | "crypto_wallet"
-  | "gold"
-  | "stock"
-  | "expense"
-  | "external";
-
-export type TransactionType =
-  | "income"
-  | "buy"
-  | "sell"
-  | "transfer"
-  | "expense";
+/** A trade only ever acquires or disposes an asset. */
+export type TransactionType = "buy" | "sell";
 
 export type HoldingSource = "manual" | "wallet";
 
@@ -29,15 +17,6 @@ export type SyncStatus = "idle" | "syncing" | "synced" | "degraded" | "error";
 export type TransferDirection = "in" | "out";
 
 // --- Core tables ---
-export interface Account {
-  id: string;
-  user_id: string;
-  name: string;
-  type: AccountType;
-  currency: string;
-  created_at: string;
-}
-
 export interface Portfolio {
   id: string;
   user_id: string;
@@ -56,28 +35,24 @@ export interface Holding {
   amount: number;
   source: HoldingSource;
   wallet_ref: string | null;
+  /** Optional target allocation %, relative to its portfolio (0..100). */
+  target_pct: number | null;
   created_at: string;
 }
 
+/** A manual asset trade — one buy or sell of `amount` units of `asset`. */
 export interface Transaction {
   id: string;
   user_id: string;
   date: string;
   type: TransactionType;
-  source_account: string | null;
-  dest_account: string | null;
+  /** Ticker/symbol traded (e.g. BTC, NVDA, XAU). */
+  asset: string;
+  /** Quantity of the asset bought or sold. */
   amount: number;
-  category: string | null;
+  /** Unit price in USD; null when not recorded. */
+  price: number | null;
   note: string | null;
-  created_at: string;
-}
-
-export interface Liability {
-  id: string;
-  user_id: string;
-  name: string;
-  balance: number;
-  type: string | null;
   created_at: string;
 }
 

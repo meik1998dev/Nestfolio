@@ -19,16 +19,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import type {
-  Account,
-  Holding,
-  Liability,
-  Portfolio,
-  Transaction,
-} from "@/lib/types";
-import { deriveAccountBalances } from "@/lib/ledger/balances";
+import type { Holding, Portfolio } from "@/lib/types";
 import { computeHoldingValues } from "@/lib/portfolio/valuation";
-import { buildBreakdowns, computeNetWorth, sumLiabilities } from "./networth";
+import { buildBreakdowns, computeNetWorth } from "./networth";
 
 type Service = ReturnType<typeof createServiceClient>;
 
@@ -52,40 +45,19 @@ export async function takeSnapshot(userId: string): Promise<SnapshotResult> {
     };
   }
 
-  const [accounts, transactions, holdings, prices, liabilities, portfolios] =
-    await Promise.all([
-      rows<Account>(supabase, "accounts", userId),
-      rows<Transaction>(supabase, "transactions", userId),
-      rows<Holding>(supabase, "holdings", userId),
-      readLivePrices(supabase),
-      rows<Liability>(supabase, "liabilities", userId),
-      rows<Portfolio>(supabase, "portfolios", userId),
-    ]);
-
-  // Derive cash balances from the ledger (same logic the accounts page uses).
-  // Coerce numeric strings from the service client to numbers first.
-  const balances = deriveAccountBalances(
-    accounts,
-    transactions.map((t) => ({ ...t, amount: Number(t.amount) })),
-  );
-  const assetAccounts = accounts
-    .filter((a) => a.type !== "expense" && a.type !== "external")
-    .map((a) => ({ account: a, balance: balances.get(a.id) ?? 0 }));
-  const cash = assetAccounts.reduce((s, a) => s + a.balance, 0);
+  const [holdings, prices, portfolios] = await Promise.all([
+    rows<Holding>(supabase, "holdings", userId),
+    readLivePrices(supabase),
+    rows<Portfolio>(supabase, "portfolios", userId),
+  ]);
 
   const holdingValues = computeHoldingValues(holdings, prices);
   const holdingsValue = [...holdingValues.values()].reduce((s, v) => s + v, 0);
-  const liabilitiesTotal = sumLiabilities(liabilities);
 
-  const netWorth = computeNetWorth({
-    cash,
-    holdingsValue,
-    liabilities: liabilitiesTotal,
-  });
+  const netWorth = computeNetWorth({ holdingsValue });
 
   const portfolioNames = new Map(portfolios.map((p) => [p.id, p.name]));
   const breakdowns = buildBreakdowns({
-    accounts: assetAccounts,
     holdings,
     holdingValues,
     portfolioNames,
@@ -97,9 +69,7 @@ export async function takeSnapshot(userId: string): Promise<SnapshotResult> {
     taken_at: takenAt,
     net_worth: netWorth,
     breakdown: {
-      cash,
       holdingsValue,
-      liabilities: liabilitiesTotal,
       byAssetClass: breakdowns.byAssetClass,
       byPortfolio: breakdowns.byPortfolio,
     },
@@ -143,7 +113,7 @@ export async function listSnapshots(): Promise<
 export async function allUserIdsWithData(): Promise<string[]> {
   const supabase = createServiceClient();
   const ids = new Set<string>();
-  for (const table of ["accounts", "holdings", "liabilities"] as const) {
+  for (const table of ["holdings", "transactions"] as const) {
     const { data } = await supabase.from(table).select("user_id");
     for (const r of (data ?? []) as Array<{ user_id: string }>)
       ids.add(r.user_id);

@@ -11,6 +11,7 @@ function hold(asset: string, amount: number, id = asset): Holding {
     amount,
     source: "manual",
     wallet_ref: null,
+    target_pct: null,
     created_at: "2026-01-01T00:00:00Z",
   };
 }

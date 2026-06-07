@@ -1,22 +1,16 @@
 "use server";
 
 /**
- * Server-side data access + mutations for the transaction ledger. One shape
- * covers every value movement (income/buy/sell/transfer/expense) via
- * `type` + `source_account` → `dest_account`. Validation enforces which legs
- * each type requires so the books stay reconcilable.
+ * Server-side data access + mutations for the trade ledger. A transaction is one
+ * asset trade — a `buy` or `sell` of `amount` units of `asset` at an optional
+ * unit `price`. Manual trades live in the `transactions` table; wallet-synced
+ * trades come from `trade_events` (read-only) and are merged for display.
  */
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Transaction, TransactionType } from "@/lib/types";
 
-const TRANSACTION_TYPES: TransactionType[] = [
-  "income",
-  "buy",
-  "sell",
-  "transfer",
-  "expense",
-];
+const TRANSACTION_TYPES: TransactionType[] = ["buy", "sell"];
 
 async function requireUserId() {
   const supabase = await createClient();
@@ -27,7 +21,7 @@ async function requireUserId() {
   return { supabase, userId: user.id };
 }
 
-/** Full transaction log, newest first (the ledger view's default order). */
+/** Manual trade log, newest first (the ledger view's default order). */
 export async function listTransactions(): Promise<Transaction[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -39,81 +33,98 @@ export async function listTransactions(): Promise<Transaction[]> {
   return (data ?? []) as Transaction[];
 }
 
-/**
- * Which legs a transaction type requires.
- * - income: external/null source → an account (dest required)
- * - expense: an account → external/expense sink (source required)
- * - buy/sell/transfer: both legs are internal accounts (both required)
- */
-function validateLegs(
-  type: TransactionType,
-  source: string | null,
-  dest: string | null,
-): void {
-  switch (type) {
-    case "income":
-      if (!dest) throw new Error("Income needs a destination account");
-      break;
-    case "expense":
-      if (!source) throw new Error("Expense needs a source account");
-      break;
-    case "buy":
-    case "sell":
-    case "transfer":
-      if (!source || !dest)
-        throw new Error(
-          `A ${type} needs both a source and destination account`,
-        );
-      break;
-  }
+/** One row of the unified trade history (manual + wallet-synced). */
+export interface TradeRow {
+  id: string;
+  date: string;
+  type: string;
+  asset: string;
+  /** Quantity of the asset. */
+  amount: number;
+  /** Unit price in USD, when known. */
+  price: number | null;
+  /** Total USD value of the trade, when known. */
+  value: number | null;
+  source: "manual" | "wallet";
+  note: string | null;
 }
 
-/** Create a transaction from a form submission. */
+/**
+ * Wallet-synced trades from `trade_events`, newest first. These are produced by
+ * the PnL classifier (F6) and are read-only here — the wallet is their source of
+ * truth. Used by the Transactions view to show synced trades alongside manual.
+ */
+export async function listWalletTrades(): Promise<TradeRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("trade_events")
+    .select("id, ts, type, ticker, shares, unit_price, usd_value")
+    .order("ts", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (
+    (data ?? []) as Array<{
+      id: string;
+      ts: string;
+      type: string;
+      ticker: string;
+      shares: number;
+      unit_price: number | null;
+      usd_value: number | null;
+    }>
+  ).map((e) => ({
+    id: e.id,
+    date: e.ts.slice(0, 10),
+    type: e.type,
+    asset: e.ticker,
+    amount: Number(e.shares),
+    price: e.unit_price !== null ? Number(e.unit_price) : null,
+    value: e.usd_value !== null ? Number(e.usd_value) : null,
+    source: "wallet",
+    note: null,
+  }));
+}
+
+/** Create a manual trade from a form submission. */
 export async function createTransaction(formData: FormData): Promise<void> {
   const type = String(formData.get("type") ?? "") as TransactionType;
   if (!TRANSACTION_TYPES.includes(type))
     throw new Error("Invalid transaction type");
 
-  // Empty string from a "None / External" option means no internal account.
-  const source = (String(formData.get("source_account") ?? "") || null) as
-    | string
-    | null;
-  const dest = (String(formData.get("dest_account") ?? "") || null) as
-    | string
-    | null;
+  const asset = String(formData.get("asset") ?? "")
+    .trim()
+    .toUpperCase();
   const amount = Number(formData.get("amount"));
+  const priceRaw = String(formData.get("price") ?? "").trim();
+  const price = priceRaw === "" ? null : Number(priceRaw);
   const date = String(formData.get("date") ?? "").trim();
-  const category = (String(formData.get("category") ?? "").trim() || null) as
-    | string
-    | null;
   const note = (String(formData.get("note") ?? "").trim() || null) as
     | string
     | null;
 
-  if (!Number.isFinite(amount) || amount < 0)
-    throw new Error("Amount must be a non-negative number");
+  if (!asset) throw new Error("Asset is required");
+  if (!Number.isFinite(amount) || amount <= 0)
+    throw new Error("Quantity must be a positive number");
+  if (price !== null && (!Number.isFinite(price) || price < 0))
+    throw new Error("Price must be a non-negative number");
   if (!date) throw new Error("Date is required");
-  validateLegs(type, source, dest);
 
   const { supabase, userId } = await requireUserId();
   const { error } = await supabase.from("transactions").insert({
     user_id: userId,
     type,
-    source_account: source,
-    dest_account: dest,
+    asset,
     amount,
+    price,
     date,
-    // Category only meaningful for expenses; ignore it otherwise.
-    category: type === "expense" ? category : null,
     note,
   });
   if (error) throw new Error(error.message);
 
   revalidatePath("/transactions");
-  revalidatePath("/accounts");
+  revalidatePath("/dashboard");
 }
 
-/** Delete a transaction. */
+/** Delete a manual trade. */
 export async function deleteTransaction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Transaction id is required");
@@ -123,5 +134,5 @@ export async function deleteTransaction(formData: FormData): Promise<void> {
   if (error) throw new Error(error.message);
 
   revalidatePath("/transactions");
-  revalidatePath("/accounts");
+  revalidatePath("/dashboard");
 }

@@ -1,25 +1,12 @@
 import { describe, it, expect } from "vitest";
-import type { Account, Holding } from "@/lib/types";
+import type { Holding } from "@/lib/types";
 import {
   computeNetWorth,
-  totalAssets,
   toBreakdown,
   buildBreakdowns,
-  sumLiabilities,
   momChange,
   assetClassForHolding,
 } from "./networth";
-
-function acct(id: string, type: Account["type"], name = id): Account {
-  return {
-    id,
-    user_id: "u",
-    name,
-    type,
-    currency: "USD",
-    created_at: "2026-01-01T00:00:00Z",
-  };
-}
 
 function hold(
   id: string,
@@ -34,36 +21,17 @@ function hold(
     amount: 1,
     source: "manual",
     wallet_ref: null,
+    target_pct: null,
     created_at: "2026-01-01T00:00:00Z",
   };
 }
 
 describe("computeNetWorth", () => {
-  it("is cash + holdings − liabilities", () => {
-    expect(
-      computeNetWorth({ cash: 1000, holdingsValue: 5000, liabilities: 2000 }),
-    ).toBe(4000);
+  it("equals the holdings value", () => {
+    expect(computeNetWorth({ holdingsValue: 5000 })).toBe(5000);
   });
-  it("can go negative when debts exceed assets", () => {
-    expect(
-      computeNetWorth({ cash: 0, holdingsValue: 100, liabilities: 500 }),
-    ).toBe(-400);
-  });
-  it("totalAssets excludes liabilities", () => {
-    expect(
-      totalAssets({ cash: 1000, holdingsValue: 5000, liabilities: 2000 }),
-    ).toBe(6000);
-  });
-  it("reconciles: assets − liabilities == net worth", () => {
-    const inputs = {
-      cash: 1234.56,
-      holdingsValue: 7890.12,
-      liabilities: 345.6,
-    };
-    expect(totalAssets(inputs) - inputs.liabilities).toBeCloseTo(
-      computeNetWorth(inputs),
-      9,
-    );
+  it("is zero with no holdings", () => {
+    expect(computeNetWorth({ holdingsValue: 0 })).toBe(0);
   });
 });
 
@@ -86,11 +54,7 @@ describe("toBreakdown", () => {
 });
 
 describe("buildBreakdowns", () => {
-  it("byAssetClass sums to total assets and shares sum to 1", () => {
-    const accounts = [
-      { account: acct("c1", "cash"), balance: 1000 },
-      { account: acct("s1", "stock"), balance: 0 },
-    ];
+  it("byAssetClass sums to total holdings value and shares sum to 1", () => {
     const holdings = [hold("h1", "BTC", "p1"), hold("h2", "NVDAon", "p1")];
     const holdingValues = new Map([
       ["h1", 4000],
@@ -98,14 +62,13 @@ describe("buildBreakdowns", () => {
     ]);
     const portfolioNames = new Map([["p1", "Growth"]]);
     const { byAssetClass, byPortfolio } = buildBreakdowns({
-      accounts,
       holdings,
       holdingValues,
       portfolioNames,
     });
 
     const classTotal = byAssetClass.reduce((s, x) => s + x.value, 0);
-    expect(classTotal).toBe(6000); // 1000 cash + 4000 crypto + 1000 stock
+    expect(classTotal).toBe(5000); // 4000 crypto + 1000 stock
     expect(byAssetClass.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1, 9);
 
     // BTC → crypto, NVDAon → stock
@@ -120,7 +83,6 @@ describe("buildBreakdowns", () => {
 
   it("buckets unassigned holdings under 'Unassigned'", () => {
     const { byPortfolio } = buildBreakdowns({
-      accounts: [],
       holdings: [hold("h1", "BTC", null)],
       holdingValues: new Map([["h1", 100]]),
       portfolioNames: new Map(),
@@ -140,31 +102,6 @@ describe("assetClassForHolding", () => {
     expect(assetClassForHolding("paxg")).toBe("gold");
     // Tokenized stocks keep classifying as stock.
     expect(assetClassForHolding("NVDAon")).toBe("stock");
-  });
-});
-
-describe("sumLiabilities", () => {
-  it("sums balances", () => {
-    expect(
-      sumLiabilities([
-        {
-          id: "1",
-          user_id: "u",
-          name: "Loan",
-          balance: 5000,
-          type: "loan",
-          created_at: "",
-        },
-        {
-          id: "2",
-          user_id: "u",
-          name: "Card",
-          balance: 1200,
-          type: "credit",
-          created_at: "",
-        },
-      ]),
-    ).toBe(6200);
   });
 });
 

@@ -4,7 +4,7 @@ import {
   ArrowLeftRight,
   Wallet,
   TrendingUp,
-  Landmark,
+  Coins,
   type LucideIcon,
 } from "lucide-react";
 
@@ -14,13 +14,13 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-/** Primary navigation, ordered by how a wealth owner actually works:
- *  overview first, then structure, ledger, sources, performance, plumbing. */
+/** Primary navigation, ordered by how an asset owner actually works:
+ *  overview first, then holdings, trades, sources, structure, performance. */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/portfolios", label: "Portfolios", icon: FolderTree },
+  { href: "/holdings", label: "Holdings", icon: Coins },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/wallet", label: "Wallet", icon: Wallet },
+  { href: "/portfolios", label: "Portfolios", icon: FolderTree },
   { href: "/pnl", label: "Profit & Loss", icon: TrendingUp },
-  { href: "/accounts", label: "Accounts", icon: Landmark },
 ];

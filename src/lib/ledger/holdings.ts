@@ -44,7 +44,7 @@ export async function createHolding(formData: FormData): Promise<void> {
     .insert({ user_id: userId, asset, amount, source: "manual" });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/accounts");
+  revalidatePath("/holdings");
 }
 
 /** Update a manual holding's amount. Guards against editing wallet holdings. */
@@ -63,7 +63,35 @@ export async function updateHolding(formData: FormData): Promise<void> {
     .eq("source", "manual"); // never touch wallet-synced rows
   if (error) throw new Error(error.message);
 
-  revalidatePath("/accounts");
+  revalidatePath("/holdings");
+}
+
+/**
+ * Set (or clear) a holding's target allocation %. Unlike amount edits this is
+ * allowed on wallet holdings too — a target is allocation policy, not a synced
+ * balance. An empty value clears the target.
+ */
+export async function setHoldingTarget(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Holding id is required");
+
+  const raw = String(formData.get("target_pct") ?? "").trim();
+  let target_pct: number | null = null;
+  if (raw !== "") {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 100)
+      throw new Error("Target % must be between 0 and 100");
+    target_pct = n;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("holdings")
+    .update({ target_pct })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/portfolios", "layout");
 }
 
 /** Delete a manual holding. Wallet holdings are protected by the source filter. */
@@ -79,5 +107,5 @@ export async function deleteHolding(formData: FormData): Promise<void> {
     .eq("source", "manual");
   if (error) throw new Error(error.message);
 
-  revalidatePath("/accounts");
+  revalidatePath("/holdings");
 }

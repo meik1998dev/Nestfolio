@@ -1,4 +1,9 @@
-import { CircleCheck, AlertTriangle, TrendingUp } from "lucide-react";
+import {
+  CircleCheck,
+  AlertTriangle,
+  TrendingUp,
+  LineChart as LineIcon,
+} from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
   Card,
@@ -16,17 +21,32 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AssetLink } from "@/components/asset-link";
+import { PerformanceChart } from "@/components/performance-chart";
 import { formatUSD, formatQty, pnlColor } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getPnl, type PnlView } from "@/lib/pnl/pnl";
+import {
+  getPortfolioPerformance,
+  parsePerfRange,
+  type PerformanceView,
+} from "@/lib/insights/performance";
 import { RecomputeButton } from "./recompute-button";
 
-export default async function PnlPage() {
+export default async function PnlPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const view = await getPnl(user!.id);
+  const { range } = await searchParams;
+  const [view, performance] = await Promise.all([
+    getPnl(user!.id),
+    getPortfolioPerformance(parsePerfRange(range)),
+  ]);
 
   return (
     <>
@@ -43,6 +63,7 @@ export default async function PnlPage() {
         <>
           <ReconciliationBanner view={view} />
           <HeadlineCards view={view} />
+          <PerformanceCard performance={performance} />
           <HoldingsTable view={view} />
         </>
       )}
@@ -106,6 +127,30 @@ function MetricCard({
   );
 }
 
+function PerformanceCard({ performance }: { performance: PerformanceView }) {
+  if (performance.empty) return null;
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <LineIcon className="text-muted-foreground size-4" />
+          Performance
+        </CardTitle>
+        <CardDescription>
+          Portfolio value and profit/loss over time — pick a range.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <PerformanceChart
+          series={performance.series}
+          range={performance.range}
+          basePath="/pnl"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 function HoldingsTable({ view }: { view: PnlView }) {
   return (
     <Card>
@@ -134,7 +179,9 @@ function HoldingsTable({ view }: { view: PnlView }) {
           <TableBody>
             {view.holdings.map((h) => (
               <TableRow key={h.ticker}>
-                <TableCell className="font-medium">{h.ticker}</TableCell>
+                <TableCell className="font-medium">
+                  <AssetLink symbol={h.ticker} />
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatQty(h.shares)}
                 </TableCell>
@@ -207,8 +254,11 @@ function ReconciliationBanner({ view }: { view: PnlView }) {
           Expected balance {formatUSD(r.expectedBalance)} (deposits{" "}
           {formatUSD(r.deposited)} − buys {formatUSD(r.spentOnBuys)} + sells{" "}
           {formatUSD(r.fromSells)}) vs actual {formatUSD(r.actualBalance)} — off
-          by {formatUSD(r.difference)}. Re-sync the wallet; the transfer parse
-          may be incomplete.
+          by{" "}
+          <span className="text-destructive font-semibold tabular-nums">
+            {formatUSD(r.difference)}
+          </span>
+          . Re-sync the wallet; the transfer parse may be incomplete.
         </p>
       </div>
     </div>

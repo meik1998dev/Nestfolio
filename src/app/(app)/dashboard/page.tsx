@@ -1,24 +1,23 @@
 /**
- * Net Worth command center (F5 — S5.1/S5.3/S5.4/S5.5/S5.6). The landing screen.
+ * Portfolio command center (F5 — S5.1/S5.3/S5.4/S5.5). The landing screen.
  *
- * Server Component: assembles every input through the shared aggregation
- * (`getNetWorthSummary`), the snapshot history, the monthly review, and PnL, then
- * hands data to small client charts. Degrades gracefully — empty accounts/prices
- * never blank the page; missing snapshots show a friendly history empty state.
+ * Server Component: assembles the holdings-based net worth (`getNetWorthSummary`),
+ * the snapshot history, and PnL, then hands data to small client charts. Degrades
+ * gracefully — empty holdings/prices never blank the page; missing snapshots show
+ * a friendly history empty state.
  */
 import {
   TrendingUp,
   TrendingDown,
   Wallet,
-  Landmark,
-  Scale,
+  Coins,
   PieChart as PieIcon,
   LineChart as LineIcon,
   Sparkles,
-  CalendarClock,
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react";
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import {
   Card,
@@ -27,57 +26,45 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatRatioPct, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getNetWorthSummary } from "@/lib/insights/networth.server";
 import {
-  getNetWorthSummary,
-  readLiabilities,
-} from "@/lib/insights/networth.server";
-import { listSnapshots } from "@/lib/insights/snapshot";
-import { getMonthlyReview } from "@/lib/insights/review.server";
-import { deleteLiability } from "@/lib/insights/liabilities";
+  getPortfolioPerformance,
+  parsePerfRange,
+} from "@/lib/insights/performance";
 import { getPnl } from "@/lib/pnl/pnl";
 import { createClient } from "@/lib/supabase/server";
-import { AllocationPie, AssetLiabilityBars, NetWorthHistory } from "./charts";
+import { PerformanceChart } from "@/components/performance-chart";
+import { AllocationPie } from "./charts";
 import { ProjectionPanel } from "./projection";
 import { SnapshotButton } from "./snapshot-button";
-import { LiabilityForm } from "./liability-form";
-import { DeleteButton } from "../accounts/delete-button";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user!.id;
 
-  const [summary, snapshots, liabilities, review, pnl] = await Promise.all([
+  const { range } = await searchParams;
+  const [summary, performance, pnl] = await Promise.all([
     getNetWorthSummary(),
-    listSnapshots(),
-    readLiabilities(),
-    getMonthlyReview(userId),
+    getPortfolioPerformance(parsePerfRange(range)),
     getPnl(userId),
   ]);
 
-  const hasData =
-    summary.totalAssets > 0 ||
-    summary.liabilities > 0 ||
-    liabilities.length > 0;
+  const hasData = summary.holdingsValue > 0 || !pnl.empty;
 
   return (
     <>
       <PageHeader
-        title="Net Worth"
-        description="Everything you own, minus what you owe — at a glance."
+        title="Portfolio"
+        description="Everything you hold, valued live — at a glance."
       >
         <SnapshotButton variant="outline" label="Snapshot" />
       </PageHeader>
@@ -86,10 +73,10 @@ export default async function DashboardPage() {
         <FirstRunEmptyState />
       ) : (
         <div className="space-y-6">
-          {/* Hero: net worth + MoM */}
+          {/* Hero: portfolio value + MoM */}
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Total net worth</CardDescription>
+              <CardDescription>Portfolio value</CardDescription>
               <CardTitle className="text-4xl tabular-nums sm:text-5xl">
                 {formatUSD(summary.netWorth)}
               </CardTitle>
@@ -134,20 +121,9 @@ export default async function DashboardPage() {
           {/* Stat cards */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard
-              icon={<Wallet className="size-4" />}
-              label="Total assets"
-              value={formatUSD(summary.totalAssets)}
-            />
-            <StatCard
-              icon={<Scale className="size-4" />}
-              label="Liabilities"
-              value={formatUSD(summary.liabilities)}
-            />
-            <StatCard
-              icon={<Landmark className="size-4" />}
-              label="Cash"
-              value={formatUSD(summary.cash)}
-              sub={`${formatUSD(summary.holdingsValue)} invested`}
+              icon={<Coins className="size-4" />}
+              label="Invested"
+              value={formatUSD(summary.holdingsValue)}
             />
             <StatCard
               icon={
@@ -158,27 +134,25 @@ export default async function DashboardPage() {
                 )
               }
               label="Total P&L"
-              value={formatUSD(pnl.rollup.total)}
+              value={formatUSD(pnl.rollup.total, { signed: true })}
               valueClass={pnlColor(pnl.rollup.total)}
+            />
+            <StatCard
+              icon={<Wallet className="size-4" />}
+              label="Realized P&L"
+              value={formatUSD(pnl.rollup.realized, { signed: true })}
+              valueClass={pnlColor(pnl.rollup.realized)}
+            />
+            <StatCard
+              icon={<Sparkles className="size-4" />}
+              label="Unrealized P&L"
+              value={formatUSD(pnl.rollup.unrealized, { signed: true })}
+              valueClass={pnlColor(pnl.rollup.unrealized)}
             />
           </div>
 
-          {/* Bars + Pie */}
+          {/* Allocation + Pie */}
           <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Scale className="text-muted-foreground size-4" />
-                  Assets vs liabilities
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AssetLiabilityBars
-                  assets={summary.totalAssets}
-                  liabilities={summary.liabilities}
-                />
-              </CardContent>
-            </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -191,37 +165,6 @@ export default async function DashboardPage() {
                 <AllocationPie slices={summary.breakdowns.byAssetClass} />
               </CardContent>
             </Card>
-          </div>
-
-          {/* History */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <LineIcon className="text-muted-foreground size-4" />
-                Net-worth history
-              </CardTitle>
-              <CardDescription>
-                Builds up as daily snapshots accrue.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {snapshots.length >= 2 ? (
-                <NetWorthHistory series={snapshots} />
-              ) : (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <p className="font-medium">History is just getting started</p>
-                  <p className="text-muted-foreground max-w-sm text-sm">
-                    Your net-worth line builds as snapshots accrue (one is taken
-                    automatically each day). Take the first one now.
-                  </p>
-                  <SnapshotButton />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Projection + Monthly review */}
-          <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -229,87 +172,42 @@ export default async function DashboardPage() {
                   Where you&apos;re headed
                 </CardTitle>
                 <CardDescription>
-                  Projected net worth at your savings rate.
+                  Projected value at your savings rate.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <ProjectionPanel startingNetWorth={summary.netWorth} />
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CalendarClock className="text-muted-foreground size-4" />
-                  This month
-                </CardTitle>
-                <CardDescription>What moved your net worth.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <MonthlyReviewBody review={review} />
-              </CardContent>
-            </Card>
           </div>
 
-          {/* Liabilities */}
+          {/* Performance: value + P&L over time */}
           <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <div className="space-y-1.5">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Scale className="text-muted-foreground size-4" />
-                  Liabilities
-                </CardTitle>
-                <CardDescription>
-                  Debts that reduce your net worth.
-                </CardDescription>
-              </div>
-              <LiabilityForm />
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LineIcon className="text-muted-foreground size-4" />
+                Performance
+              </CardTitle>
+              <CardDescription>
+                Portfolio value and profit/loss over time — pick a range.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {liabilities.length === 0 ? (
-                <p className="text-muted-foreground py-6 text-center text-sm">
-                  No liabilities tracked. Add a loan or credit card so your net
-                  worth reflects what you truly own.
-                </p>
+              {!performance.empty ? (
+                <PerformanceChart
+                  series={performance.series}
+                  range={performance.range}
+                  basePath="/dashboard"
+                />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">Balance</TableHead>
-                      <TableHead className="w-20" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {liabilities.map((l) => (
-                      <TableRow key={l.id}>
-                        <TableCell className="font-medium">{l.name}</TableCell>
-                        <TableCell>
-                          {l.type ? (
-                            <Badge variant="secondary">{l.type}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right text-red-600 tabular-nums dark:text-red-500">
-                          {formatUSD(Number(l.balance))}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end">
-                            <LiabilityForm liability={l} />
-                            <DeleteButton
-                              id={l.id}
-                              action={deleteLiability}
-                              label={`Delete ${l.name}`}
-                              successMessage="Liability deleted"
-                            />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="font-medium">History is just getting started</p>
+                  <p className="text-muted-foreground max-w-sm text-sm">
+                    Log a trade or sync a wallet and your value line fills in
+                    from recorded prices. Take a snapshot to start the record.
+                  </p>
+                  <SnapshotButton />
+                </div>
               )}
             </CardContent>
           </Card>
@@ -350,140 +248,31 @@ function StatCard({
   );
 }
 
-function MonthlyReviewBody({
-  review,
-}: {
-  review: Awaited<ReturnType<typeof getMonthlyReview>>;
-}) {
-  return (
-    <div className="space-y-4">
-      {review.insufficient ? (
-        <p className="text-muted-foreground text-sm">
-          A full review needs a snapshot from a month ago. Income and gains
-          appear once history builds.
-        </p>
-      ) : (
-        <div className="flex items-baseline justify-between">
-          <span className="text-muted-foreground text-sm">
-            Net worth change
-          </span>
-          <span
-            className={cn(
-              "text-lg font-semibold tabular-nums",
-              pnlColor(review.netWorthChange),
-            )}
-          >
-            {formatUSD(review.netWorthChange, { signed: true })}
-          </span>
-        </div>
-      )}
-
-      <dl className="grid grid-cols-2 gap-3 text-sm">
-        <ReviewStat
-          label="Income added"
-          value={formatUSD(review.incomeAdded)}
-        />
-        <ReviewStat
-          label="Investment gains"
-          value={formatUSD(review.investmentGains, { signed: true })}
-          valueClass={pnlColor(review.investmentGains)}
-        />
-      </dl>
-
-      <div className="grid grid-cols-2 gap-3">
-        <WinnerLoser
-          kind="winner"
-          ticker={review.winner?.ticker ?? null}
-          pnl={review.winner?.totalPnl ?? null}
-        />
-        <WinnerLoser
-          kind="loser"
-          ticker={review.loser?.ticker ?? null}
-          pnl={review.loser?.totalPnl ?? null}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ReviewStat({
-  label,
-  value,
-  valueClass,
-}: {
-  label: string;
-  value: string;
-  valueClass?: string;
-}) {
-  return (
-    <div className="rounded-lg border p-3">
-      <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className={cn("font-medium tabular-nums", valueClass)}>{value}</dd>
-    </div>
-  );
-}
-
-function WinnerLoser({
-  kind,
-  ticker,
-  pnl,
-}: {
-  kind: "winner" | "loser";
-  ticker: string | null;
-  pnl: number | null;
-}) {
-  const isWinner = kind === "winner";
-  return (
-    <div className="rounded-lg border p-3">
-      <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-        {isWinner ? (
-          <TrendingUp className="size-3.5" />
-        ) : (
-          <TrendingDown className="size-3.5" />
-        )}
-        {isWinner ? "Biggest winner" : "Biggest loser"}
-      </p>
-      {ticker ? (
-        <>
-          <p className="font-medium">{ticker}</p>
-          <p className={cn("text-sm tabular-nums", pnlColor(pnl ?? 0))}>
-            {formatUSD(pnl ?? 0, { signed: true })}
-          </p>
-        </>
-      ) : (
-        <p className="text-muted-foreground text-sm">—</p>
-      )}
-    </div>
-  );
-}
-
 function FirstRunEmptyState() {
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
         <Wallet className="text-muted-foreground size-10" />
         <div className="space-y-1">
-          <p className="text-lg font-semibold">
-            Let&apos;s build your net worth
-          </p>
+          <p className="text-lg font-semibold">Let&apos;s build your portfolio</p>
           <p className="text-muted-foreground mx-auto max-w-md text-sm">
-            Add accounts and holdings, or sync a wallet, and this screen comes
-            alive — net worth, allocation, history, and projections.
+            Add holdings or sync a wallet, and this screen comes alive — value,
+            allocation, history, and projections.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <a
-            href="/accounts"
+          <Link
+            href="/holdings"
             className="bg-primary text-primary-foreground inline-flex h-9 items-center rounded-md px-4 text-sm font-medium"
           >
-            Add accounts
-          </a>
-          <a
+            Add holdings
+          </Link>
+          <Link
             href="/wallet"
             className="inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium"
           >
             Sync a wallet
-          </a>
+          </Link>
         </div>
       </CardContent>
     </Card>

@@ -22,177 +22,133 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { Account, TransactionType } from "@/lib/types";
+import type { TransactionType } from "@/lib/types";
 import { createTransaction } from "@/lib/ledger/transactions";
 
 const TYPE_OPTIONS: { value: TransactionType; label: string }[] = [
-  { value: "income", label: "Income" },
   { value: "buy", label: "Buy" },
   { value: "sell", label: "Sell" },
-  { value: "transfer", label: "Transfer" },
-  { value: "expense", label: "Expense" },
 ];
-
-/** Whether each leg is an internal account for a given type. Income has an
- *  external source; expense has an external dest — those legs become optional. */
-function legConfig(type: TransactionType) {
-  return {
-    sourceRequired: type !== "income",
-    destRequired: type !== "expense",
-    showCategory: type === "expense",
-  };
-}
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-/** Dialog + form to log a transaction. */
-export function TransactionForm({ accounts }: { accounts: Account[] }) {
+/** Dialog + form to log a manual asset trade (buy/sell). */
+export function TransactionForm({ assets = [] }: { assets?: string[] }) {
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<TransactionType>("expense");
-  const { sourceRequired, destRequired, showCategory } = legConfig(type);
 
   async function action(formData: FormData) {
     try {
       await createTransaction(formData);
-      toast.success("Transaction logged");
+      toast.success("Trade logged");
       setOpen(false);
-      setType("expense");
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Could not log transaction",
-      );
+      toast.error(err instanceof Error ? err.message : "Could not log trade");
     }
   }
-
-  const accountOptions = accounts.map((a) => (
-    <SelectItem key={a.id} value={a.id}>
-      {a.name}
-    </SelectItem>
-  ));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button disabled={accounts.length === 0}>
+          <Button>
             <Plus />
-            Log transaction
+            Log trade
           </Button>
         }
       />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Log transaction</DialogTitle>
+          <DialogTitle>Log trade</DialogTitle>
           <DialogDescription>
-            Move value between accounts. Income enters from outside; expenses
-            leave to outside.
+            Record a buy or sell of an asset — the quantity and the price you
+            traded at.
           </DialogDescription>
         </DialogHeader>
         <form action={action} className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="tx-type">Type</Label>
-            <Select
-              name="type"
-              value={type}
-              onValueChange={(v) => setType(v as TransactionType)}
-            >
-              <SelectTrigger id="tx-type" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TYPE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="tx-source">
-                {sourceRequired ? "From" : "From (external)"}
-              </Label>
-              {sourceRequired ? (
-                <Select name="source_account">
-                  <SelectTrigger id="tx-source" className="w-full">
-                    <SelectValue placeholder="Account" />
-                  </SelectTrigger>
-                  <SelectContent>{accountOptions}</SelectContent>
-                </Select>
-              ) : (
-                <p className="text-muted-foreground flex h-8 items-center text-sm">
-                  Outside world
-                </p>
-              )}
+              <Label htmlFor="tx-type">Type</Label>
+              <Select name="type" defaultValue="buy">
+                <SelectTrigger id="tx-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="tx-dest">
-                {destRequired ? "To" : "To (external)"}
-              </Label>
-              {destRequired ? (
-                <Select name="dest_account">
-                  <SelectTrigger id="tx-dest" className="w-full">
-                    <SelectValue placeholder="Account" />
-                  </SelectTrigger>
-                  <SelectContent>{accountOptions}</SelectContent>
-                </Select>
-              ) : (
-                <p className="text-muted-foreground flex h-8 items-center text-sm">
-                  Outside world
-                </p>
+              <Label htmlFor="tx-asset">Asset</Label>
+              <Input
+                id="tx-asset"
+                name="asset"
+                placeholder="e.g. BTC, NVDA, XAU"
+                list="tx-asset-options"
+                autoComplete="off"
+                required
+              />
+              {assets.length > 0 && (
+                <datalist id="tx-asset-options">
+                  {assets.map((a) => (
+                    <option key={a} value={a} />
+                  ))}
+                </datalist>
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="tx-amount">Amount (USD)</Label>
+              <Label htmlFor="tx-amount">Quantity</Label>
               <Input
                 id="tx-amount"
                 name="amount"
                 type="number"
                 step="any"
                 min="0"
-                placeholder="0.00"
+                placeholder="0.0"
                 required
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="tx-date">Date</Label>
+              <Label htmlFor="tx-price">Unit price (USD)</Label>
               <Input
-                id="tx-date"
-                name="date"
-                type="date"
-                defaultValue={today()}
-                required
+                id="tx-price"
+                name="price"
+                type="number"
+                step="any"
+                min="0"
+                placeholder="optional"
               />
             </div>
           </div>
 
-          {showCategory && (
-            <div className="grid gap-2">
-              <Label htmlFor="tx-category">Category</Label>
-              <Input
-                id="tx-category"
-                name="category"
-                placeholder="e.g. Rent, Food, Travel"
-              />
-            </div>
-          )}
+          <div className="grid gap-2">
+            <Label htmlFor="tx-date">Date</Label>
+            <Input
+              id="tx-date"
+              name="date"
+              type="date"
+              defaultValue={today()}
+              required
+            />
+          </div>
 
           <div className="grid gap-2">
             <Label htmlFor="tx-note">Note</Label>
             <Input
               id="tx-note"
               name="note"
-              placeholder="Optional — what was this for?"
+              placeholder="Optional — exchange, rationale, etc."
             />
           </div>
 
           <DialogFooter>
-            <Button type="submit">Save transaction</Button>
+            <Button type="submit">Save trade</Button>
           </DialogFooter>
         </form>
       </DialogContent>

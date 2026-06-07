@@ -9,8 +9,6 @@
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   Cell,
   Pie,
   PieChart,
@@ -86,57 +84,6 @@ export function AllocationPie({ slices }: { slices: BreakdownSlice[] }) {
   );
 }
 
-/** Assets vs liabilities, as two stacked horizontal-ish bars. */
-export function AssetLiabilityBars({
-  assets,
-  liabilities,
-}: {
-  assets: number;
-  liabilities: number;
-}) {
-  const data = [
-    { name: "Assets", value: assets, fill: "var(--chart-1)" },
-    { name: "Liabilities", value: liabilities, fill: "var(--chart-3)" },
-  ];
-  return (
-    <ResponsiveContainer width="100%" height={160}>
-      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-        <XAxis
-          type="number"
-          tickFormatter={(v) => formatUSD(v, { compact: true })}
-          tick={{ fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          type="category"
-          dataKey="name"
-          tick={{ fontSize: 12 }}
-          axisLine={false}
-          tickLine={false}
-          width={72}
-        />
-        <Tooltip
-          cursor={{ fill: "var(--muted)" }}
-          content={({ active, payload }) =>
-            active && payload?.length ? (
-              <TooltipBox
-                label={payload[0].payload.name}
-                value={formatUSD(payload[0].payload.value)}
-              />
-            ) : null
-          }
-        />
-        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={28}>
-          {data.map((d) => (
-            <Cell key={d.name} fill={d.fill} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
-
 /** Net-worth history over time (S5.3). */
 export function NetWorthHistory({
   series,
@@ -150,13 +97,16 @@ export function NetWorthHistory({
     }),
     value: s.net_worth,
   }));
+  // Trend color: green if net worth ended higher than it started, red if lower.
+  const up = data.length < 2 || data[data.length - 1].value >= data[0].value;
+  const trendColor = up ? "var(--color-emerald-600)" : "var(--color-red-600)";
   return (
     <ResponsiveContainer width="100%" height={240}>
       <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
         <defs>
           <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+            <stop offset="0%" stopColor={trendColor} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={trendColor} stopOpacity={0} />
           </linearGradient>
         </defs>
         <XAxis
@@ -186,7 +136,7 @@ export function NetWorthHistory({
         <Area
           type="monotone"
           dataKey="value"
-          stroke="var(--chart-1)"
+          stroke={trendColor}
           strokeWidth={2}
           fill="url(#nwFill)"
         />

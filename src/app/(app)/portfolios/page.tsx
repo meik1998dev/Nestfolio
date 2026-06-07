@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { FolderTree, Scale, Inbox, TriangleAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -16,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AssetLink } from "@/components/asset-link";
 import { formatUSD, formatPct, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { listPortfolios, deletePortfolio } from "@/lib/portfolio/portfolios";
@@ -31,7 +33,7 @@ import {
 import { rebalanceTree } from "@/lib/portfolio/rebalance";
 import { PortfolioForm } from "./portfolio-form";
 import { EditPortfolioButton } from "./edit-portfolio";
-import { DeleteButton } from "../accounts/delete-button";
+import { DeleteButton } from "@/components/delete-button";
 import { AssignSelect } from "./assign-select";
 
 export default async function PortfoliosPage() {
@@ -129,7 +131,12 @@ export default async function PortfoliosPage() {
                           {node.depth > 0 && (
                             <span className="text-muted-foreground">└ </span>
                           )}
-                          {node.name}
+                          <Link
+                            href={`/portfolios/${node.id}`}
+                            className="hover:underline"
+                          >
+                            {node.name}
+                          </Link>
                         </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-right tabular-nums">
@@ -292,7 +299,9 @@ export default async function PortfoliosPage() {
                   const priced = hasPrice(h, prices);
                   return (
                     <TableRow key={h.id}>
-                      <TableCell className="font-medium">{h.asset}</TableCell>
+                      <TableCell className="font-medium">
+                        <AssetLink symbol={h.asset} />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
                           <Badge
