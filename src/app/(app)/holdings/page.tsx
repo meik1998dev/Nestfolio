@@ -7,14 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { SortableTable } from "@/components/sortable-table";
 import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty } from "@/lib/format";
 import { listHoldings, deleteHolding } from "@/lib/ledger/holdings";
@@ -72,63 +65,64 @@ export default async function HoldingsPage() {
               <HoldingForm />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Asset</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {holdings.map((holding) => {
-                  const value = holdingValues.get(holding.id) ?? 0;
-                  const priced = holding.amount > 0 ? value > 0 : true;
-                  return (
-                    <TableRow key={holding.id}>
-                      <TableCell className="font-medium">
+            <SortableTable
+              initialSort={{ key: "value", dir: "desc" }}
+              columns={[
+                { key: "asset", header: "Asset" },
+                { key: "source", header: "Source" },
+                { key: "amount", header: "Amount", align: "right", sortable: true },
+                { key: "value", header: "Value", align: "right", sortable: true },
+                { key: "actions", header: "", align: "right", headClassName: "w-10" },
+              ]}
+              rows={holdings.map((holding) => {
+                const value = holdingValues.get(holding.id) ?? 0;
+                const priced = holding.amount > 0 ? value > 0 : true;
+                return {
+                  key: holding.id,
+                  sort: {
+                    amount: holding.amount,
+                    value: priced ? value : null,
+                  },
+                  cells: {
+                    asset: (
+                      <span className="font-medium">
                         <AssetLink symbol={holding.asset} />
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            holding.source === "wallet"
-                              ? "outline"
-                              : "secondary"
-                          }
-                        >
-                          {holding.source === "wallet" ? "Wallet" : "Manual"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      </span>
+                    ),
+                    source: (
+                      <Badge
+                        variant={
+                          holding.source === "wallet" ? "outline" : "secondary"
+                        }
+                      >
+                        {holding.source === "wallet" ? "Wallet" : "Manual"}
+                      </Badge>
+                    ),
+                    amount: (
+                      <span className="tabular-nums">
                         {formatQty(holding.amount)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {priced ? (
-                          formatUSD(value)
-                        ) : (
-                          <span className="text-muted-foreground text-xs">
-                            no price
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {holding.source === "manual" && (
-                          <DeleteButton
-                            id={holding.id}
-                            action={deleteHolding}
-                            label={`Delete ${holding.asset}`}
-                            successMessage="Holding deleted"
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                      </span>
+                    ),
+                    value: priced ? (
+                      <span className="tabular-nums">{formatUSD(value)}</span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">
+                        no price
+                      </span>
+                    ),
+                    actions:
+                      holding.source === "manual" ? (
+                        <DeleteButton
+                          id={holding.id}
+                          action={deleteHolding}
+                          label={`Delete ${holding.asset}`}
+                          successMessage="Holding deleted"
+                        />
+                      ) : null,
+                  },
+                };
+              })}
+            />
           )}
         </CardContent>
       </Card>

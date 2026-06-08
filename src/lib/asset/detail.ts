@@ -32,6 +32,8 @@ import {
 import type { TradeEventInput, TradeEventKind } from "@/lib/pnl/classify";
 import {
   todayIso,
+  isoDay,
+  DAY_MS,
   rangeStart as rangeStartFor,
   sampleDates,
   loadHistory,
@@ -76,6 +78,20 @@ export interface AssetDetail {
    * when the asset is unpriceable or has no cost basis to measure against.
    */
   rangeChanges: Record<AssetRange, number | null>;
+  /** Forward-looking decision metrics (52w extremes, volatility, first trade). */
+  metrics: AssetMetrics;
+}
+
+/** Range-independent stats that power the Decision metrics card. */
+export interface AssetMetrics {
+  /** Highest daily close over the trailing 52 weeks (incl. live). */
+  high52: number | null;
+  /** Lowest daily close over the trailing 52 weeks (incl. live). */
+  low52: number | null;
+  /** Annualized volatility (stdev of daily log returns × √252), as a fraction. */
+  volatility: number | null;
+  /** Earliest trade date across all sources — anchors holding period & CAGR. */
+  firstTradeDate: string | null;
 }
 
 /** Days between sampled series points, per range — keeps history calls bounded. */
@@ -203,8 +219,12 @@ export async function getAssetDetail(
   const startIso = rangeStartFor(range, earliestTrade);
   const today = todayIso();
   const histMap = await loadHistory(supabase, ledgerTicker, startIso, today);
-  const lookup = (date: string): number | null =>
-    priceOnOrBefore(histMap, date);
+  // Called two ways: directly as lookup(date), and by buildLedger as
+  // histPrice(ticker, date). Take the date from the last arg either way so a
+  // ticker is never mistaken for a date (which would price every 1-leg trade at
+  // the latest close, collapsing cost basis onto market value → $0 P&L).
+  const lookup = (a: string, b?: string): number | null =>
+    priceOnOrBefore(histMap, b ?? a);
 
   // Seed the captured unit price for 1-leg trades (delivery/send) at their date —
   // it's the price recorded at sync time, so buildLedger can price them even if a
@@ -274,6 +294,13 @@ export async function getAssetDetail(
     for (const r of ASSET_RANGES) rangeChanges[r] = null;
   }
 
+  const metrics = await computeMetrics(
+    supabase,
+    ledgerTicker,
+    livePrice,
+    transactions,
+  );
+
   return {
     symbol: rawUpper,
     displayName: resolved.displayName,
@@ -293,7 +320,64 @@ export async function getAssetDetail(
     transactions,
     series,
     rangeChanges,
+    metrics,
   };
+}
+
+/**
+ * Trailing-52-week extremes + annualized volatility for the Decision metrics
+ * card. Range-independent (always a fixed 1-year window) so the figures don't
+ * shift when the user flips the chart range. Returns nulls when unpriceable or
+ * when there's too little history to be meaningful.
+ */
+async function computeMetrics(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ticker: string,
+  livePrice: number | null,
+  transactions: TradeRow[],
+): Promise<AssetMetrics> {
+  const firstTradeDate = transactions.reduce<string | null>(
+    (min, t) => (min === null || t.date < min ? t.date : min),
+    null,
+  );
+  const empty: AssetMetrics = {
+    high52: null,
+    low52: null,
+    volatility: null,
+    firstTradeDate,
+  };
+  if (livePrice == null) return empty;
+
+  const today = todayIso();
+  const start = isoDay(new Date(Date.now() - 365 * DAY_MS));
+  const hist = await loadHistory(supabase, ticker, start, today);
+  // Backfill any gaps so a thinly-traded asset still yields a 52w range.
+  await ensurePrices(hist, ticker, sampleDates(start, today, 7));
+
+  const closes = [...hist.entries()]
+    .filter(([d]) => d >= start)
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([, c]) => c)
+    .filter((c) => c > 0);
+  if (closes.length < 2) return empty;
+
+  const high52 = Math.max(...closes, livePrice);
+  const low52 = Math.min(...closes, livePrice);
+
+  // Annualized volatility = stdev of daily log returns × √252 (trading days).
+  const rets: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    rets.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  let volatility: number | null = null;
+  if (rets.length > 1) {
+    const mean = rets.reduce((s, r) => s + r, 0) / rets.length;
+    const variance =
+      rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length - 1);
+    volatility = Math.sqrt(variance) * Math.sqrt(252);
+  }
+
+  return { high52, low52, volatility, firstTradeDate };
 }
 
 /**

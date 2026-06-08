@@ -30,7 +30,14 @@ import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty, formatDate, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getAssetDetail, parseRange } from "@/lib/asset/detail";
+import { getNetWorthSummary } from "@/lib/insights/networth.server";
+import { getTimeframePnl } from "@/lib/insights/performance";
+import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
+import { PnlStatTabs } from "@/components/pnl-stat-tabs";
 import { AssetChart } from "./asset-chart";
+import { WhatIf } from "./what-if";
+import { DecisionMetrics } from "./decision-metrics";
+import { PositionPlanner } from "./position-planner";
 
 const TYPE_BADGE: Record<
   string,
@@ -77,6 +84,32 @@ export default async function AssetPage({
   const detail = await getAssetDetail(assetParam, parseRange(range));
   if (!detail) notFound();
 
+  // Net worth powers the concentration metric (this position as a % of total).
+  const { netWorth } = await getNetWorthSummary();
+
+  // Timeframe P&L scoped to this one asset's pricing ticker. Only meaningful when
+  // the position is priceable and fully valued (else fall back to static cards).
+  const showTabs =
+    detail.pnlKnown &&
+    detail.ticker != null &&
+    detail.unrealized != null &&
+    detail.total != null;
+  const windowed = showTabs
+    ? await getTimeframePnl({ tickers: new Set([detail.ticker!.toUpperCase()]) })
+    : [];
+  const timeframes: TimeframePnl[] = showTabs
+    ? [
+        {
+          timeframe: "all",
+          realized: detail.realized,
+          unrealized: detail.unrealized!,
+          total: detail.total!,
+          partial: false,
+        },
+        ...windowed,
+      ]
+    : [];
+
   const heldLabel =
     detail.amountHeld > 0
       ? `${formatQty(detail.amountHeld)} held`
@@ -113,43 +146,50 @@ export default async function AssetPage({
           </div>
         )}
 
-        {/* P&L stat cards */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-          <StatCard
-            icon={
-              (detail.total ?? 0) >= 0 ? (
-                <TrendingUp className="size-4" />
-              ) : (
-                <TrendingDown className="size-4" />
-              )
-            }
-            label="Total P&L"
-            value={detail.pnlKnown ? pnl(detail.total) : "—"}
-            valueClass={
-              detail.pnlKnown && detail.total != null ? pnlColor(detail.total) : ""
-            }
-          />
-          <StatCard
-            icon={<Wallet className="size-4" />}
-            label="Realized P&L"
-            value={
-              detail.pnlKnown
-                ? formatUSD(detail.realized, { signed: true })
-                : "—"
-            }
-            valueClass={detail.pnlKnown ? pnlColor(detail.realized) : ""}
-          />
-          <StatCard
-            icon={<Sparkles className="size-4" />}
-            label="Unrealized P&L"
-            value={detail.pnlKnown ? pnl(detail.unrealized) : "—"}
-            valueClass={
-              detail.pnlKnown && detail.unrealized != null
-                ? pnlColor(detail.unrealized)
-                : ""
-            }
-          />
-        </div>
+        {/* P&L by timeframe (Return % / Total / Realized / Unrealized) with tabs;
+            falls back to static cards when the asset isn't priceable. */}
+        {showTabs ? (
+          <PnlStatTabs data={timeframes} investedCapital={detail.costBasis} />
+        ) : (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatCard
+              icon={
+                (detail.total ?? 0) >= 0 ? (
+                  <TrendingUp className="size-4" />
+                ) : (
+                  <TrendingDown className="size-4" />
+                )
+              }
+              label="Total P&L"
+              value={detail.pnlKnown ? pnl(detail.total) : "—"}
+              valueClass={
+                detail.pnlKnown && detail.total != null
+                  ? pnlColor(detail.total)
+                  : ""
+              }
+            />
+            <StatCard
+              icon={<Wallet className="size-4" />}
+              label="Realized P&L"
+              value={
+                detail.pnlKnown
+                  ? formatUSD(detail.realized, { signed: true })
+                  : "—"
+              }
+              valueClass={detail.pnlKnown ? pnlColor(detail.realized) : ""}
+            />
+            <StatCard
+              icon={<Sparkles className="size-4" />}
+              label="Unrealized P&L"
+              value={detail.pnlKnown ? pnl(detail.unrealized) : "—"}
+              valueClass={
+                detail.pnlKnown && detail.unrealized != null
+                  ? pnlColor(detail.unrealized)
+                  : ""
+              }
+            />
+          </div>
+        )}
 
         {/* Position summary */}
         <Card>
@@ -194,6 +234,40 @@ export default async function AssetPage({
             />
           </CardContent>
         </Card>
+
+        {/* Decision metrics */}
+        {detail.kind !== "unknown" && (
+          <DecisionMetrics
+            amountHeld={detail.amountHeld}
+            avgCost={detail.avgCost}
+            livePrice={detail.livePrice}
+            marketValue={detail.marketValue}
+            costBasis={detail.costBasis}
+            pnlKnown={detail.pnlKnown}
+            metrics={detail.metrics}
+            netWorth={netWorth}
+          />
+        )}
+
+        {/* What-if price calculator */}
+        {detail.kind !== "unknown" && (
+          <WhatIf
+            symbol={detail.symbol}
+            amountHeld={detail.amountHeld}
+            avgCost={detail.avgCost}
+            livePrice={detail.livePrice}
+          />
+        )}
+
+        {/* Position planner — trade simulator + stop-loss/take-profit */}
+        {detail.kind !== "unknown" && (
+          <PositionPlanner
+            symbol={detail.symbol}
+            amountHeld={detail.amountHeld}
+            avgCost={detail.avgCost}
+            livePrice={detail.livePrice}
+          />
+        )}
 
         {/* Transactions */}
         <Card>

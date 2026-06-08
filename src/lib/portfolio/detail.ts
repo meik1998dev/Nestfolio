@@ -75,6 +75,12 @@ export interface PortfolioDetail {
   allocation: AllocationSlice[];
   /** PnL rollup over the subtree's positions. */
   pnl: PnlRollup;
+  /**
+   * Pricing tickers the PnL rollup covers — including fully-closed positions
+   * (sold out, no holding row). The performance chart scopes to these so its
+   * realized P&L ties out with the rollup, not just currently-held tickers.
+   */
+  pnlTickers: string[];
   /** Subtree holdings with value + per-holding PnL, biggest value first. */
   holdings: DetailHolding[];
   /** Trades (manual + wallet) touching assets held in this subtree, newest first. */
@@ -159,6 +165,28 @@ export async function getPortfolioDetail(
     );
   };
 
+  // Wallets feeding this subtree (by current holdings). Used to attribute the
+  // realized PnL of FULLY-CLOSED positions, which have no holding row to match
+  // on ticker and would otherwise be silently dropped from the rollup.
+  const subtreeWalletAddrs = new Set(
+    subtreeHoldings
+      .map((h) => h.wallet_ref?.toLowerCase())
+      .filter((a): a is string => !!a),
+  );
+  const subtreeWalletIds = new Set<string>();
+  if (subtreeWalletAddrs.size > 0) {
+    const { data: walletRows } = await supabase
+      .from("wallets")
+      .select("id, address");
+    for (const w of (walletRows ?? []) as Array<{
+      id: string;
+      address: string;
+    }>) {
+      if (subtreeWalletAddrs.has(w.address.toLowerCase()))
+        subtreeWalletIds.add(w.id);
+    }
+  }
+
   // --- Value + allocation (ONE LEVEL: child portfolios + own holdings) ---
   const totalValue = node.totalValue;
   const shareOf = (v: number) => (totalValue > 0 ? v / totalValue : 0);
@@ -212,9 +240,18 @@ export async function getPortfolioDetail(
 
   // --- PnL scoped to subtree positions ---
   const fullPnl = await getPnl(user.id);
-  const positions = fullPnl.holdings.filter((p) => tickerSet.has(p.ticker));
+  // A position belongs to this subtree if it's currently held here (ticker match)
+  // OR it's fully closed but was traded in a wallet that feeds this subtree —
+  // otherwise realized PnL from sold-out positions vanishes from the rollup.
+  const isClosed = (p: PositionPnl) => Math.abs(p.shares) < 1e-9;
+  const positions = fullPnl.holdings.filter(
+    (p) =>
+      tickerSet.has(p.ticker) ||
+      (isClosed(p) && !!p.walletId && subtreeWalletIds.has(p.walletId)),
+  );
   const positionByTicker = new Map(positions.map((p) => [p.ticker, p]));
   const pnl = rollup(positions);
+  const pnlTickers = [...new Set(positions.map((p) => p.ticker.toUpperCase()))];
 
   const detailHoldings: DetailHolding[] = subtreeHoldings
     .map((h) => {
@@ -257,6 +294,7 @@ export async function getPortfolioDetail(
     totalValue,
     allocation,
     pnl,
+    pnlTickers,
     holdings: detailHoldings,
     transactions,
     hasMissingPrices: subtreeHoldings.some(

@@ -50,6 +50,38 @@ export interface PerformanceView {
   empty: boolean;
 }
 
+/** Tuning for a performance run. */
+export interface PerfOptions {
+  /**
+   * Restrict the replayed ledger to a portfolio subtree's pricing tickers. Each
+   * trade is resolved with a bare-ticker-aware resolver and kept only if its
+   * ticker is in this set — so a stock trade stored as "NVDA"/"NVDAON" maps to
+   * the same "NVDA" the holdings resolve to. Omit for the whole-ledger view.
+   */
+  tickers?: Set<string>;
+  /** Also compute the SPY benchmark (return % + $ what-if) fields. */
+  benchmark?: boolean;
+}
+
+/** The benchmark ticker — SPY ETF, dividend-adjusted close via the Yahoo provider. */
+const SPY_TICKER = "SPY";
+
+/**
+ * Resolve a trade's `asset` to its pricing ticker. `resolveToken` handles the
+ * tokenized form (NVDAon → NVDA) and crypto pairs; when it can't (the asset is
+ * already a bare equity ticker like "NVDA", or an upper-cased "NVDAON" manual
+ * entry), fall back to the known subtree ticker set.
+ */
+function scopedTicker(asset: string, scope?: Set<string>): string | null {
+  const direct = resolveToken(asset).ticker;
+  if (direct) return direct.toUpperCase();
+  if (!scope) return null;
+  const up = asset.trim().toUpperCase();
+  if (scope.has(up)) return up; // bare ticker, e.g. "NVDA"
+  if (up.endsWith("ON") && scope.has(up.slice(0, -2))) return up.slice(0, -2); // "NVDAON"
+  return null;
+}
+
 /** Days between sampled points, per range — keeps history calls bounded. */
 const STEP_DAYS: Record<PerfRange, number> = {
   "1M": 1,
@@ -71,15 +103,30 @@ interface TaggedTrade {
  */
 export async function getPortfolioPerformance(
   range: PerfRange,
+  opts: PerfOptions = {},
 ): Promise<PerformanceView> {
   const supabase = await createClient();
-  const { trades, events, tickers, earliest } = await loadTradeEvents();
+  // Whole ledger; a portfolio scopes it to its subtree tickers (resolving bare
+  // tickers the global resolver can't). Dashboard passes no scope → everything.
+  const rows = await loadAllRows();
+  const resolver = opts.tickers
+    ? (a: string) => scopedTicker(a, opts.tickers)
+    : (a: string) => resolveToken(a).ticker;
+  const { trades, events, tickers, earliest } = buildLoaded(
+    rows,
+    resolver,
+    opts.tickers,
+  );
 
   if (trades.length === 0) {
     return { range, series: [], empty: true };
   }
 
-  const startIso = rangeStart(range, earliest);
+  // Never plot before the first trade — a fixed range (1Y/6M/…) that reaches
+  // back before you started investing would otherwise show a flat $0 lead-in.
+  const rangeStartIso = rangeStart(range, earliest);
+  const startIso =
+    earliest && earliest > rangeStartIso ? earliest : rangeStartIso;
   const today = todayIso();
   const axis = sampleDates(startIso, today, STEP_DAYS[range]);
 
@@ -93,6 +140,22 @@ export async function getPortfolioPerformance(
   );
 
   const liveByTicker = await readLivePrices(supabase, tickers);
+
+  // --- Optional SPY benchmark: load closes back to the first trade (the mirror
+  // walks ALL trades, not just in-range, to get correct shares at range start). ---
+  let spyAt: (d: string) => number | null = () => null;
+  let benchTimeline: BenchPoint[] | null = null;
+  let spyLiveOrNull: number | null = null;
+  if (opts.benchmark) {
+    const spyStart = earliest ?? startIso;
+    const spyMap = await loadHistory(supabase, SPY_TICKER, spyStart, today);
+    const tradeDays = trades.map((t) => t.row.date.slice(0, 10));
+    await ensurePrices(spyMap, SPY_TICKER, [...axis, ...tradeDays]);
+    spyAt = (d) => priceOnOrBefore(spyMap, d);
+    benchTimeline = buildBenchmarkTimeline(trades, histLookup, spyAt);
+    const spyLive = await readLivePrices(supabase, [SPY_TICKER]);
+    spyLiveOrNull = spyLive.get(SPY_TICKER) ?? null;
+  }
 
   // --- Replay the ledger at each sampled date, summing across tickers ---
   const series: PerfPoint[] = [];
@@ -130,16 +193,133 @@ export async function getPortfolioPerformance(
 
     const valueOut = priced ? value : null;
     const unrealizedOut = pricedHeld && priced ? unrealized : null;
-    series.push({
+    const point: PerfPoint = {
       date,
       value: valueOut,
       realized,
       unrealized: unrealizedOut,
       total: unrealizedOut !== null ? realized + unrealizedOut : null,
-    });
+    };
+
+    if (benchTimeline) {
+      const b = benchAsOf(benchTimeline, date);
+      // Live SPY close on the final point so it ties out with "now".
+      const spyNow = date === today ? (spyLiveOrNull ?? spyAt(date)) : spyAt(date);
+      const invested = b && b.costDeployed > 1e-6 ? b.costDeployed : null;
+      const spyValue =
+        b && spyNow != null ? Math.max(b.spyShares, 0) * spyNow : null;
+      point.investedCapital = invested;
+      // Total return on deployed capital — realized + unrealized over net cost, so
+      // it ties to the Total P&L card. valueOut already carries held cost +
+      // unrealized; adding `realized` makes the numerator the full P&L.
+      point.returnPct =
+        invested != null && valueOut != null
+          ? (valueOut + realized) / invested - 1
+          : null;
+      point.spyValue = spyValue;
+      // Same basis for the benchmark: held mirror value + the mirror's realized.
+      point.spyReturnPct =
+        invested != null && spyValue != null
+          ? (spyValue + (b?.spyRealized ?? 0)) / invested - 1
+          : null;
+    }
+
+    series.push(point);
   }
 
   return { range, series, empty: false };
+}
+
+/** A point in the cumulative benchmark mirror, recorded after each trade. */
+interface BenchPoint {
+  date: string;
+  /** Net capital deployed at cost (Σ acquisitions − Σ disposals at avg cost). */
+  costDeployed: number;
+  /** SPY shares held by mirroring each acquisition's USD into SPY. */
+  spyShares: number;
+  /**
+   * Cumulative realized P&L of the SPY mirror: when the portfolio sells, the
+   * mirror sells the same *proportion* of SPY shares at that day's SPY close, and
+   * (proceeds − cost retired) accrues here. Keeps the benchmark apples-to-apples
+   * with the portfolio's realized P&L instead of silently discarding it.
+   */
+  spyRealized: number;
+}
+
+/**
+ * Build the SPY "what-if" mirror by replaying trades once in date order. Each
+ * acquisition deploys its USD cost into SPY (shares += usd / spyClose); each
+ * disposal removes the same *proportion* of SPY shares as the cost it retires,
+ * so `spyShares` and the cost-basis denominator stay in lock-step. The result is
+ * an apples-to-apples "same cash flows, but in SPY" position over time.
+ *
+ * Denominator is cost (not proceeds) so a profitable partial sell doesn't blow
+ * up the return %. Returns one entry per trade, ascending by date.
+ */
+function buildBenchmarkTimeline(
+  trades: TaggedTrade[],
+  histLookup: (ticker: string, date: string) => number | null,
+  spyAt: (date: string) => number | null,
+): BenchPoint[] {
+  const sorted = [...trades].sort((a, b) =>
+    a.row.date < b.row.date ? -1 : a.row.date > b.row.date ? 1 : 0,
+  );
+  const pos = new Map<string, { shares: number; cost: number }>();
+  let costDeployed = 0;
+  let spyShares = 0;
+  let spyCost = 0; // == costDeployed; tracked to size proportional disposals
+  let spyRealized = 0; // cumulative realized P&L of the mirror's proportional sells
+  const timeline: BenchPoint[] = [];
+
+  for (const t of sorted) {
+    const d = t.row.date.slice(0, 10);
+    const acquire = t.row.type === "buy" || t.row.type === "delivery";
+    // USD deployed: explicit trade value, else qty × that day's asset close.
+    const px = histLookup(t.ticker, d);
+    const usd = t.row.value ?? (px != null ? t.row.amount * px : null);
+    let p = pos.get(t.ticker);
+    if (!p) {
+      p = { shares: 0, cost: 0 };
+      pos.set(t.ticker, p);
+    }
+
+    if (acquire) {
+      if (usd != null) {
+        const sc = spyAt(d);
+        p.shares += t.row.amount;
+        p.cost += usd;
+        costDeployed += usd;
+        spyCost += usd;
+        if (sc != null) spyShares += usd / sc;
+      }
+    } else {
+      const avg = p.shares > 0 ? p.cost / p.shares : 0;
+      const costRemoved = avg * t.row.amount;
+      const frac = spyCost > 0 ? costRemoved / spyCost : 0;
+      const spySharesSold = spyShares * frac;
+      const sc = spyAt(d);
+      // Mirror the sell: realize (proceeds − cost retired) into the SPY ledger so
+      // the benchmark's realized P&L tracks the portfolio's, not just its held leg.
+      if (sc != null) spyRealized += spySharesSold * sc - costRemoved;
+      spyShares -= spySharesSold;
+      spyCost -= costRemoved;
+      p.cost -= costRemoved;
+      p.shares -= t.row.amount;
+      costDeployed -= costRemoved;
+    }
+    timeline.push({ date: d, costDeployed, spyShares, spyRealized });
+  }
+  return timeline;
+}
+
+/** Latest benchmark point on or before `date` (timeline is ascending). */
+function benchAsOf(timeline: BenchPoint[], date: string): BenchPoint | null {
+  let best: BenchPoint | null = null;
+  for (const b of timeline) {
+    if (b.date <= date) best = b;
+    else break;
+  }
+  return best;
 }
 
 interface LoadedTrades {
@@ -149,12 +329,8 @@ interface LoadedTrades {
   earliest: string | null;
 }
 
-/**
- * Load manual + wallet trades, tag each with its pricing ticker (dropping
- * unpriceable spam / unknown tokens), and derive the classified event stream the
- * ledger replays. Shared by the performance series and the timeframe PnL.
- */
-async function loadTradeEvents(): Promise<LoadedTrades> {
+/** Combined manual + wallet trade rows (raw, unresolved), the row source for replay. */
+async function loadAllRows(): Promise<TradeRow[]> {
   const [manual, walletTrades] = await Promise.all([
     listTransactions(),
     listWalletTrades(),
@@ -172,10 +348,25 @@ async function loadTradeEvents(): Promise<LoadedTrades> {
     note: t.note,
   }));
 
-  const trades: TaggedTrade[] = [...manualRows, ...walletTrades]
+  return [...manualRows, ...walletTrades];
+}
+
+/**
+ * Tag each trade row with its pricing ticker (dropping rows that don't resolve),
+ * then derive the classified event stream the ledger replays. `resolveTicker`
+ * varies by caller: the global ledger uses plain `resolveToken`; a portfolio uses
+ * the subtree-aware `scopedTicker`. When `keep` is given, only trades whose
+ * resolved ticker is in it survive (scopes a portfolio to its own positions).
+ */
+function buildLoaded(
+  rows: TradeRow[],
+  resolveTicker: (asset: string) => string | null,
+  keep?: Set<string>,
+): LoadedTrades {
+  const trades: TaggedTrade[] = rows
     .map((row) => {
-      const ticker = resolveToken(row.asset).ticker;
-      return ticker ? { row, ticker: ticker.toUpperCase() } : null;
+      const ticker = resolveTicker(row.asset)?.toUpperCase() ?? null;
+      return ticker && (!keep || keep.has(ticker)) ? { row, ticker } : null;
     })
     .filter((t): t is TaggedTrade => t !== null);
 
@@ -312,9 +503,17 @@ function rollupAsOf(
  * by the caller (from `getPnl`, the authoritative cost_basis path). Returns an
  * empty array when there are no priceable trades.
  */
-export async function getTimeframePnl(): Promise<TimeframePnl[]> {
+export async function getTimeframePnl(
+  opts: { tickers?: Set<string> } = {},
+): Promise<TimeframePnl[]> {
   const supabase = await createClient();
-  const { trades, events, tickers } = await loadTradeEvents();
+  // Scope to a portfolio subtree / single asset when `tickers` is given (same
+  // bare-ticker-aware resolver the performance series uses); else whole ledger.
+  const rows = await loadAllRows();
+  const resolver = opts.tickers
+    ? (a: string) => scopedTicker(a, opts.tickers)
+    : (a: string) => resolveToken(a).ticker;
+  const { trades, events, tickers } = buildLoaded(rows, resolver, opts.tickers);
   if (trades.length === 0) return [];
 
   const today = todayIso();

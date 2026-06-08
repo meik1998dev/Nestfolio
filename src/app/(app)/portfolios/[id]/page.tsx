@@ -9,12 +9,9 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Coins,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  Sparkles,
   PieChart as PieIcon,
   ArrowLeftRight,
+  LineChart as LineChartIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { AssetLink } from "@/components/asset-link";
@@ -33,21 +30,60 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SortableTable } from "@/components/sortable-table";
 import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty, formatDate, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getPortfolioDetail } from "@/lib/portfolio/detail";
+import {
+  getPortfolioPerformance,
+  getTimeframePnl,
+} from "@/lib/insights/performance";
+import { parsePerfRange } from "@/lib/insights/performance.types";
+import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
+import { resolveToken } from "@/lib/price/ticker";
+import { PerformanceChart } from "@/components/performance-chart";
+import { PnlStatTabs } from "@/components/pnl-stat-tabs";
 import { TargetAllocationPie } from "./allocation";
 import { TargetInput } from "./target-input";
 
 export default async function PortfolioDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ range?: string }>;
 }) {
   const { id } = await params;
   const detail = await getPortfolioDetail(id);
   if (!detail) notFound();
+
+  // Scope the performance curve to the tickers the PnL rollup covers (incl.
+  // fully-closed positions, so realized P&L ties out), unioned with currently-
+  // held tickers (in case a holding has no cost-basis row yet).
+  const range = parsePerfRange((await searchParams).range);
+  const tickers = new Set<string>(detail.pnlTickers);
+  for (const h of detail.holdings) {
+    const t = resolveToken(h.holding.asset).ticker;
+    if (t) tickers.add(t.toUpperCase());
+  }
+  const [performance, windowed] = await Promise.all([
+    getPortfolioPerformance(range, { tickers, benchmark: true }),
+    getTimeframePnl({ tickers }),
+  ]);
+
+  // "All" is the authoritative scoped rollup (ties to the headline); the rest are
+  // period deltas from the ledger replay, scoped to this portfolio's tickers.
+  const timeframes: TimeframePnl[] = [
+    {
+      timeframe: "all",
+      realized: detail.pnl.realized,
+      unrealized: detail.pnl.unrealized,
+      total: detail.pnl.total,
+      partial: detail.pnl.hasMissingPrices,
+    },
+    ...windowed,
+  ];
 
   return (
     <>
@@ -84,38 +120,35 @@ export default async function PortfolioDetailPage({
           )}
         </Card>
 
-        {/* PnL stat cards */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            icon={<Coins className="size-4" />}
-            label="Market value"
-            value={formatUSD(detail.pnl.marketValue)}
-          />
-          <StatCard
-            icon={
-              detail.pnl.total >= 0 ? (
-                <TrendingUp className="size-4" />
-              ) : (
-                <TrendingDown className="size-4" />
-              )
-            }
-            label="Total P&L"
-            value={formatUSD(detail.pnl.total, { signed: true })}
-            valueClass={pnlColor(detail.pnl.total)}
-          />
-          <StatCard
-            icon={<Wallet className="size-4" />}
-            label="Realized P&L"
-            value={formatUSD(detail.pnl.realized, { signed: true })}
-            valueClass={pnlColor(detail.pnl.realized)}
-          />
-          <StatCard
-            icon={<Sparkles className="size-4" />}
-            label="Unrealized P&L"
-            value={formatUSD(detail.pnl.unrealized, { signed: true })}
-            valueClass={pnlColor(detail.pnl.unrealized)}
-          />
-        </div>
+        {/* PnL by timeframe: Return % / Total / Realized / Unrealized with tabs */}
+        <PnlStatTabs data={timeframes} investedCapital={detail.pnl.costBasis} />
+
+        {/* Performance & P&L over time */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <LineChartIcon className="text-muted-foreground size-4" />
+              Performance
+            </CardTitle>
+            <CardDescription>
+              Value, P&amp;L, and return over time — with an optional S&amp;P 500
+              benchmark.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {performance.empty ? (
+              <p className="text-muted-foreground py-6 text-center text-sm">
+                No priceable trade history for this portfolio yet.
+              </p>
+            ) : (
+              <PerformanceChart
+                series={performance.series}
+                range={range}
+                basePath={`/portfolios/${id}`}
+              />
+            )}
+          </CardContent>
+        </Card>
 
         {/* Allocation */}
         <Card>
@@ -150,32 +183,42 @@ export default async function PortfolioDetailPage({
                 No holdings assigned here yet.
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Asset</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Value</TableHead>
-                    <TableHead className="text-right">Unrealized</TableHead>
-                    <TableHead className="text-right">Total P&L</TableHead>
-                    <TableHead className="w-28 text-right">Target</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detail.holdings.map((h) => (
-                    <TableRow key={h.holding.id}>
-                      <TableCell className="font-medium">
+              <SortableTable
+                initialSort={{ key: "value", dir: "desc" }}
+                columns={[
+                  { key: "asset", header: "Asset" },
+                  { key: "amount", header: "Amount", align: "right", sortable: true },
+                  { key: "value", header: "Value", align: "right", sortable: true },
+                  { key: "unrealized", header: "Unrealized", align: "right", sortable: true },
+                  { key: "total", header: "Total P&L", align: "right", sortable: true },
+                  { key: "target", header: "Target", align: "right", headClassName: "w-28" },
+                ]}
+                rows={detail.holdings.map((h) => ({
+                  key: h.holding.id,
+                  sort: {
+                    amount: h.holding.amount,
+                    value: h.value,
+                    unrealized: h.pnl?.unrealizedPnl ?? null,
+                    total: h.pnl?.totalPnl ?? null,
+                  },
+                  cells: {
+                    asset: (
+                      <span className="font-medium">
                         <AssetLink symbol={h.holding.asset} />
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      </span>
+                    ),
+                    amount: (
+                      <span className="tabular-nums">
                         {formatQty(h.holding.amount)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatUSD(h.value)}
-                      </TableCell>
-                      <TableCell
+                      </span>
+                    ),
+                    value: (
+                      <span className="tabular-nums">{formatUSD(h.value)}</span>
+                    ),
+                    unrealized: (
+                      <span
                         className={cn(
-                          "text-right tabular-nums",
+                          "tabular-nums",
                           h.pnl?.unrealizedPnl != null &&
                             pnlColor(h.pnl.unrealizedPnl),
                         )}
@@ -183,27 +226,29 @@ export default async function PortfolioDetailPage({
                         {h.pnl?.unrealizedPnl != null
                           ? formatUSD(h.pnl.unrealizedPnl, { signed: true })
                           : "—"}
-                      </TableCell>
-                      <TableCell
+                      </span>
+                    ),
+                    total: (
+                      <span
                         className={cn(
-                          "text-right tabular-nums",
+                          "tabular-nums",
                           h.pnl?.totalPnl != null && pnlColor(h.pnl.totalPnl),
                         )}
                       >
                         {h.pnl?.totalPnl != null
                           ? formatUSD(h.pnl.totalPnl, { signed: true })
                           : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <TargetInput
-                          holdingId={h.holding.id}
-                          target={h.holding.target_pct}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      </span>
+                    ),
+                    target: (
+                      <TargetInput
+                        holdingId={h.holding.id}
+                        target={h.holding.target_pct}
+                      />
+                    ),
+                  },
+                }))}
+              />
             )}
           </CardContent>
         </Card>
@@ -276,31 +321,5 @@ export default async function PortfolioDetailPage({
         </Card>
       </div>
     </>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  valueClass,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  valueClass?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="text-muted-foreground flex items-center gap-2 text-sm">
-          {icon}
-          {label}
-        </div>
-        <p className={cn("mt-1 text-2xl font-semibold tabular-nums", valueClass)}>
-          {value}
-        </p>
-      </CardContent>
-    </Card>
   );
 }

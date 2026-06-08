@@ -24,6 +24,12 @@ export interface LedgerPosition {
   /** Remaining cost basis of the shares still held. */
   costBasis: number;
   realizedPnl: number;
+  /**
+   * Owning wallet id. Only populated on the DB read path (cost_basis is keyed by
+   * wallet_id, ticker); the pure ledger loop leaves it undefined. Used to scope
+   * fully-closed positions to a portfolio, which have no current holding to match.
+   */
+  walletId?: string;
 }
 
 /** A historical-price lookup for 1-leg events: ticker + ISO date → USD close. */

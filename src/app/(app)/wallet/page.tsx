@@ -12,14 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { SortableTable } from "@/components/sortable-table";
 import { Badge } from "@/components/ui/badge";
 import { AssetLink } from "@/components/asset-link";
 import { formatUSD, formatQty, formatDate } from "@/lib/format";
@@ -145,22 +138,45 @@ export default async function WalletPage() {
               body="Hit “Sync now” to pull your BNB and BEP20 token balances."
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Token</TableHead>
-                  <TableHead>Resolves to</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">USD value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {balances.map((b) => (
-                  <BalanceRow key={b.asset} b={b} />
-                ))}
-              </TableBody>
-            </Table>
+            <SortableTable
+              initialSort={{ key: "usdValue", dir: "desc" }}
+              columns={[
+                { key: "token", header: "Token" },
+                { key: "resolves", header: "Resolves to" },
+                { key: "amount", header: "Amount", align: "right", sortable: true },
+                { key: "price", header: "Price", align: "right", sortable: true },
+                { key: "usdValue", header: "USD value", align: "right", sortable: true },
+              ]}
+              rows={balances.map((b) => ({
+                key: b.asset,
+                sort: {
+                  amount: b.amount,
+                  price: b.unitPrice,
+                  usdValue: b.usdValue,
+                },
+                cells: {
+                  token: (
+                    <span className="font-medium">
+                      <AssetLink symbol={b.asset} />
+                    </span>
+                  ),
+                  resolves: <ResolvesBadge b={b} />,
+                  amount: (
+                    <span className="tabular-nums">{formatQty(b.amount)}</span>
+                  ),
+                  price: (
+                    <span className="text-muted-foreground tabular-nums">
+                      {b.unitPrice !== null ? formatUSD(b.unitPrice) : "—"}
+                    </span>
+                  ),
+                  usdValue: (
+                    <span className="tabular-nums">
+                      {b.usdValue !== null ? formatUSD(b.usdValue) : "—"}
+                    </span>
+                  ),
+                },
+              }))}
+            />
           )}
         </CardContent>
       </Card>
@@ -168,35 +184,17 @@ export default async function WalletPage() {
   );
 }
 
-function BalanceRow({ b }: { b: WalletBalanceView }) {
-  return (
-    <TableRow>
-      <TableCell className="font-medium">
-        <AssetLink symbol={b.asset} />
-      </TableCell>
-      <TableCell>
-        {b.kind === "stock" ? (
-          <Badge variant="outline">{b.ticker} · equity</Badge>
-        ) : b.kind === "stablecoin" ? (
-          <Badge variant="secondary">cash $1</Badge>
-        ) : b.ticker ? (
-          <Badge variant="secondary">{b.ticker}</Badge>
-        ) : (
-          <Badge variant="outline" className="text-muted-foreground">
-            unmapped
-          </Badge>
-        )}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatQty(b.amount)}
-      </TableCell>
-      <TableCell className="text-muted-foreground text-right tabular-nums">
-        {b.unitPrice !== null ? formatUSD(b.unitPrice) : "—"}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {b.usdValue !== null ? formatUSD(b.usdValue) : "—"}
-      </TableCell>
-    </TableRow>
+function ResolvesBadge({ b }: { b: WalletBalanceView }) {
+  return b.kind === "stock" ? (
+    <Badge variant="outline">{b.ticker} · equity</Badge>
+  ) : b.kind === "stablecoin" ? (
+    <Badge variant="secondary">cash $1</Badge>
+  ) : b.ticker ? (
+    <Badge variant="secondary">{b.ticker}</Badge>
+  ) : (
+    <Badge variant="outline" className="text-muted-foreground">
+      unmapped
+    </Badge>
   );
 }
 

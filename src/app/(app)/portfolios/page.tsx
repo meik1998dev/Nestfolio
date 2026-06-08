@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SortableTable } from "@/components/sortable-table";
 import { Badge } from "@/components/ui/badge";
 import { AssetLink } from "@/components/asset-link";
 import { formatUSD, formatPct, pnlColor } from "@/lib/format";
@@ -285,63 +286,63 @@ export default async function PortfoliosPage() {
               Every holding is assigned to a portfolio.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Asset</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
-                  <TableHead className="w-56">Assign to</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unassigned.map((h) => {
-                  const priced = hasPrice(h, prices);
-                  return (
-                    <TableRow key={h.id}>
-                      <TableCell className="font-medium">
+            <SortableTable
+              initialSort={{ key: "value", dir: "desc" }}
+              columns={[
+                { key: "asset", header: "Asset" },
+                { key: "source", header: "Source" },
+                { key: "value", header: "Value", align: "right", sortable: true },
+                { key: "assign", header: "Assign to", headClassName: "w-56" },
+              ]}
+              rows={unassigned.map((h) => {
+                const priced = hasPrice(h, prices);
+                return {
+                  key: h.id,
+                  sort: {
+                    value: priced ? (holdingValues.get(h.id) ?? 0) : null,
+                  },
+                  cells: {
+                    asset: (
+                      <span className="font-medium">
                         <AssetLink symbol={h.asset} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <Badge
-                            variant={
-                              h.source === "wallet" ? "outline" : "secondary"
-                            }
-                          >
-                            {h.source === "wallet" ? "Wallet" : "Manual"}
-                          </Badge>
-                          {h.wallet_ref && (
-                            <span className="text-muted-foreground font-mono text-xs">
-                              {shortRef(h.wallet_ref)}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {priced ? (
-                          formatUSD(holdingValues.get(h.id) ?? 0)
-                        ) : (
-                          <Badge
-                            variant="ghost"
-                            className="text-muted-foreground"
-                          >
-                            no price
-                          </Badge>
+                      </span>
+                    ),
+                    source: (
+                      <div className="flex items-center gap-1.5">
+                        <Badge
+                          variant={
+                            h.source === "wallet" ? "outline" : "secondary"
+                          }
+                        >
+                          {h.source === "wallet" ? "Wallet" : "Manual"}
+                        </Badge>
+                        {h.wallet_ref && (
+                          <span className="text-muted-foreground font-mono text-xs">
+                            {shortRef(h.wallet_ref)}
+                          </span>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <AssignSelect
-                          holdingId={h.id}
-                          portfolios={portfolios}
-                          currentPortfolioId={null}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                      </div>
+                    ),
+                    value: priced ? (
+                      <span className="tabular-nums">
+                        {formatUSD(holdingValues.get(h.id) ?? 0)}
+                      </span>
+                    ) : (
+                      <Badge variant="ghost" className="text-muted-foreground">
+                        no price
+                      </Badge>
+                    ),
+                    assign: (
+                      <AssignSelect
+                        holdingId={h.id}
+                        portfolios={portfolios}
+                        currentPortfolioId={null}
+                      />
+                    ),
+                  },
+                };
+              })}
+            />
           )}
         </CardContent>
       </Card>

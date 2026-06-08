@@ -140,4 +140,13 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums lining-nums;
   }
+  /* Recharts marks the clicked/hovered sector as focusable; suppress the
+     browser focus ring so clicking a slice/bar doesn't draw a hard border. */
+  .recharts-wrapper :focus,
+  .recharts-wrapper :focus-visible,
+  .recharts-surface,
+  .recharts-sector,
+  .recharts-rectangle {
+    outline: none;
+  }
 }

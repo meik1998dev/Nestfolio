@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Menu, X, Gem } from "lucide-react";
 import { NAV_ITEMS } from "@/components/nav";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -91,6 +92,7 @@ export function AppShell({
             <Menu className="size-4" />
           </Button>
           <span className="font-semibold">Nestfolio</span>
+          <ThemeToggle className="ml-auto" />
         </header>
         <main className="flex-1 p-4 md:p-8">{children}</main>
       </div>
@@ -110,12 +112,15 @@ function Brand() {
 function UserFooter({ email }: { email: string }) {
   return (
     <div className="mt-auto border-t p-3">
-      <p
-        className="text-muted-foreground truncate px-2 pb-2 text-xs"
-        title={email}
-      >
-        {email}
-      </p>
+      <div className="flex items-center gap-1 pb-2">
+        <p
+          className="text-muted-foreground truncate px-2 text-xs"
+          title={email}
+        >
+          {email}
+        </p>
+        <ThemeToggle className="ml-auto shrink-0" />
+      </div>
       <form action="/auth/signout" method="post">
         <Button type="submit" variant="outline" size="sm" className="w-full">
           Sign out

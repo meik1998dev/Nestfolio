@@ -25,7 +25,17 @@ import { formatUSD } from "@/lib/format";
 import type { PerfPoint, PerfRange } from "@/lib/insights/performance.types";
 import { PERF_RANGES } from "@/lib/insights/performance.types";
 
-type View = "value" | "pnl";
+type View = "value" | "pnl" | "return";
+
+/** SPY benchmark line color — distinct from the portfolio trend color. */
+const SPY_COLOR = "var(--color-violet-500)";
+
+/** Signed percent (e.g. "+12.3%"). */
+function fmtPct(v: unknown): string {
+  return v == null || !Number.isFinite(Number(v))
+    ? "—"
+    : `${Number(v) >= 0 ? "+" : ""}${(Number(v) * 100).toFixed(1)}%`;
+}
 
 /** Axis tick label. Includes the year (e.g. "Jan '24") on multi-year ranges. */
 function axisLabel(iso: string, withYear: boolean): string {
@@ -63,18 +73,27 @@ export function PerformanceChart({
   basePath: string;
 }) {
   const [view, setView] = useState<View>("value");
+  const [benchmark, setBenchmark] = useState(true);
 
   const multiYear =
     series.length > 1 &&
     series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4);
   const data = series.map((p) => ({ ...p, label: axisLabel(p.date, multiYear) }));
 
+  // Benchmark only overlays on Value ($ what-if) and Return (% rebased) views.
+  const hasBench =
+    data.some((p) => p.spyValue != null || p.spyReturnPct != null);
+  const showBench = benchmark && hasBench && view !== "pnl";
+
   const lastTotal = data.length ? data[data.length - 1].total : null;
+  const lastReturn = data.length ? data[data.length - 1].returnPct : null;
   const trendUp =
     view === "pnl"
       ? (lastTotal ?? 0) >= 0
-      : data.length < 2 ||
-        (data[data.length - 1].value ?? 0) >= (data[0].value ?? 0);
+      : view === "return"
+        ? (lastReturn ?? 0) >= 0
+        : data.length < 2 ||
+          (data[data.length - 1].value ?? 0) >= (data[0].value ?? 0);
   const trendColor = trendUp
     ? "var(--color-emerald-600)"
     : "var(--color-red-600)";
@@ -82,7 +101,7 @@ export function PerformanceChart({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {/* Value | P&L toggle */}
+        {/* Value | P&L | Return % toggle */}
         <div className="bg-muted inline-flex rounded-lg p-0.5">
           <ToggleButton active={view === "value"} onClick={() => setView("value")}>
             Value
@@ -90,17 +109,39 @@ export function PerformanceChart({
           <ToggleButton active={view === "pnl"} onClick={() => setView("pnl")}>
             P&amp;L
           </ToggleButton>
+          <ToggleButton
+            active={view === "return"}
+            onClick={() => setView("return")}
+          >
+            Return %
+          </ToggleButton>
         </div>
-        {/* Range links — server recomputes the series */}
-        <div className="flex items-center gap-1">
-          {PERF_RANGES.map((r) => (
+        <div className="flex items-center gap-2">
+          {/* S&P 500 benchmark on/off (not meaningful on the P&L view) */}
+          {hasBench && view !== "pnl" && (
             <Button
-              key={r}
               size="xs"
-              variant={r === range ? "secondary" : "ghost"}
-              render={<a href={`${basePath}?range=${r}`}>{r}</a>}
-            />
-          ))}
+              variant={showBench ? "secondary" : "ghost"}
+              onClick={() => setBenchmark((b) => !b)}
+            >
+              <span
+                className="mr-1.5 inline-block h-0.5 w-3 align-middle"
+                style={{ background: SPY_COLOR }}
+              />
+              S&amp;P 500
+            </Button>
+          )}
+          {/* Range links — server recomputes the series */}
+          <div className="flex items-center gap-1">
+            {PERF_RANGES.map((r) => (
+              <Button
+                key={r}
+                size="xs"
+                variant={r === range ? "secondary" : "ghost"}
+                render={<a href={`${basePath}?range=${r}`}>{r}</a>}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -137,7 +178,13 @@ export function PerformanceChart({
                 content={({ active, payload }) =>
                   active && payload?.length ? (
                     <TooltipBox label={fullDate(payload[0].payload.date)}>
-                      <Row name="Value" value={fmtMoney(payload[0].value)} />
+                      <Row name="Value" value={fmtMoney(payload[0].payload.value)} />
+                      {showBench && (
+                        <Row
+                          name="S&P 500 (what-if)"
+                          value={fmtMoney(payload[0].payload.spyValue)}
+                        />
+                      )}
                     </TooltipBox>
                   ) : null
                 }
@@ -151,6 +198,83 @@ export function PerformanceChart({
                 connectNulls
                 dot={false}
               />
+              {showBench && (
+                <Line
+                  type="monotone"
+                  dataKey="spyValue"
+                  name="S&P 500"
+                  stroke={SPY_COLOR}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  connectNulls
+                  dot={false}
+                />
+              )}
+            </AreaChart>
+          ) : view === "return" ? (
+            <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+              <defs>
+                <linearGradient id="perfReturnFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={trendColor} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={trendColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} strokeOpacity={0.15} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                minTickGap={24}
+              />
+              <YAxis
+                tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                tick={{ fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={48}
+              />
+              <ReferenceLine y={0} stroke="var(--border)" />
+              <Tooltip
+                content={({ active, payload }) =>
+                  active && payload?.length ? (
+                    <TooltipBox label={fullDate(payload[0].payload.date)}>
+                      <Row
+                        name="Return"
+                        value={fmtPct(payload[0].payload.returnPct)}
+                      />
+                      {showBench && (
+                        <Row
+                          name="S&P 500"
+                          value={fmtPct(payload[0].payload.spyReturnPct)}
+                        />
+                      )}
+                    </TooltipBox>
+                  ) : null
+                }
+              />
+              <Area
+                type="monotone"
+                dataKey="returnPct"
+                name="Return"
+                stroke={trendColor}
+                strokeWidth={2}
+                fill="url(#perfReturnFill)"
+                connectNulls
+                dot={false}
+              />
+              {showBench && (
+                <Line
+                  type="monotone"
+                  dataKey="spyReturnPct"
+                  name="S&P 500"
+                  stroke={SPY_COLOR}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  connectNulls
+                  dot={false}
+                />
+              )}
             </AreaChart>
           ) : (
             <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
@@ -231,6 +355,15 @@ export function PerformanceChart({
           <Legend color={trendColor} label="Total" />
           <Legend color="var(--color-amber-500)" label="Realized" />
           <Legend color="var(--color-blue-500)" label="Unrealized" dashed />
+        </div>
+      )}
+      {showBench && data.length > 0 && (
+        <div className="text-muted-foreground flex flex-wrap items-center gap-4 text-xs">
+          <Legend
+            color={trendColor}
+            label={view === "return" ? "This portfolio" : "Value"}
+          />
+          <Legend color={SPY_COLOR} label="S&P 500" dashed />
         </div>
       )}
     </div>

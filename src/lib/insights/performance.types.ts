@@ -14,4 +14,13 @@ export interface PerfPoint {
   realized: number;
   unrealized: number | null;
   total: number | null;
+  // --- Benchmark fields (only populated when computed with `benchmark: true`) ---
+  /** Net capital deployed at cost as of this date (return denominator). */
+  investedCapital?: number | null;
+  /** Portfolio return on held capital: value / investedCapital − 1. */
+  returnPct?: number | null;
+  /** "What-if": value of the same cash flows mirrored into SPY (USD). */
+  spyValue?: number | null;
+  /** SPY return on the same denominator: spyValue / investedCapital − 1. */
+  spyReturnPct?: number | null;
 }

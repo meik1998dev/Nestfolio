@@ -25,14 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { SortableTable } from "@/components/sortable-table";
 import { AssetLink } from "@/components/asset-link";
 import { formatUSD, formatQty, formatRatioPct, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -258,64 +251,89 @@ function HoldingsTable({ view }: { view: PnlView }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Ticker</TableHead>
-              <TableHead className="text-right">Shares</TableHead>
-              <TableHead className="text-right">Avg cost</TableHead>
-              <TableHead className="text-right">Cost basis</TableHead>
-              <TableHead className="text-right">Live price</TableHead>
-              <TableHead className="text-right">Market value</TableHead>
-              <TableHead className="text-right">Unrealized</TableHead>
-              <TableHead className="text-right">Realized</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {view.holdings.map((h) => (
-              <TableRow key={h.ticker}>
-                <TableCell className="font-medium">
+        <SortableTable
+          initialSort={{ key: "marketValue", dir: "desc" }}
+          columns={[
+            { key: "ticker", header: "Ticker", sortable: true },
+            { key: "shares", header: "Shares", align: "right", sortable: true },
+            { key: "avgCost", header: "Avg cost", align: "right", sortable: true },
+            { key: "costBasis", header: "Cost basis", align: "right", sortable: true },
+            { key: "livePrice", header: "Live price", align: "right", sortable: true },
+            { key: "marketValue", header: "Market value", align: "right", sortable: true },
+            { key: "unrealized", header: "Unrealized", align: "right", sortable: true },
+            { key: "realized", header: "Realized", align: "right", sortable: true },
+            { key: "total", header: "Total", align: "right", sortable: true },
+          ]}
+          rows={view.holdings.map((h) => ({
+            key: h.ticker,
+            sort: {
+              ticker: h.ticker,
+              shares: h.shares,
+              avgCost: h.shares > 0 ? h.avgCost : null,
+              costBasis: h.costBasis,
+              livePrice: h.livePrice,
+              marketValue: h.marketValue,
+              unrealized: h.unrealizedPnl,
+              realized: h.realizedPnl,
+              total: h.totalPnl,
+            },
+            cells: {
+              ticker: (
+                <span className="font-medium">
                   <AssetLink symbol={h.ticker} />
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatQty(h.shares)}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-right tabular-nums">
+                </span>
+              ),
+              shares: <span className="tabular-nums">{formatQty(h.shares)}</span>,
+              avgCost: (
+                <span className="text-muted-foreground tabular-nums">
                   {h.shares > 0 ? formatUSD(h.avgCost) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatUSD(h.costBasis)}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-right tabular-nums">
+                </span>
+              ),
+              costBasis: (
+                <span className="tabular-nums">{formatUSD(h.costBasis)}</span>
+              ),
+              livePrice: (
+                <span className="text-muted-foreground tabular-nums">
                   {h.livePrice !== null ? formatUSD(h.livePrice) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
+                </span>
+              ),
+              marketValue: (
+                <span className="tabular-nums">
                   {h.marketValue !== null ? formatUSD(h.marketValue) : "—"}
-                </TableCell>
-                <TableCell
-                  className={`text-right tabular-nums ${h.unrealizedPnl !== null ? pnlColor(h.unrealizedPnl) : ""}`}
+                </span>
+              ),
+              unrealized: (
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    h.unrealizedPnl !== null && pnlColor(h.unrealizedPnl),
+                  )}
                 >
                   {h.unrealizedPnl !== null
                     ? formatUSD(h.unrealizedPnl, { signed: true })
                     : "—"}
-                </TableCell>
-                <TableCell
-                  className={`text-right tabular-nums ${pnlColor(h.realizedPnl)}`}
-                >
+                </span>
+              ),
+              realized: (
+                <span className={cn("tabular-nums", pnlColor(h.realizedPnl))}>
                   {formatUSD(h.realizedPnl, { signed: true })}
-                </TableCell>
-                <TableCell
-                  className={`text-right font-medium tabular-nums ${h.totalPnl !== null ? pnlColor(h.totalPnl) : ""}`}
+                </span>
+              ),
+              total: (
+                <span
+                  className={cn(
+                    "font-medium tabular-nums",
+                    h.totalPnl !== null && pnlColor(h.totalPnl),
+                  )}
                 >
                   {h.totalPnl !== null
                     ? formatUSD(h.totalPnl, { signed: true })
                     : "—"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </span>
+              ),
+            },
+          }))}
+        />
       </CardContent>
     </Card>
   );

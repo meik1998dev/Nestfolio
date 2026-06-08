@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { canonicalSymbol } from "@/lib/price/ticker";
 
 /**
  * Links an asset symbol / ticker to its detail page (`/holdings/[asset]`). Use
@@ -16,12 +17,14 @@ export function AssetLink({
   className?: string;
   children?: React.ReactNode;
 }) {
+  // Collapse pricing pairs (PAXG-USD → PAXG) so one asset has one label + route.
+  const canonical = canonicalSymbol(symbol);
   return (
     <Link
-      href={`/holdings/${encodeURIComponent(symbol)}`}
+      href={`/holdings/${encodeURIComponent(canonical)}`}
       className={cn("hover:text-primary hover:underline", className)}
     >
-      {children ?? symbol}
+      {children ?? canonical}
     </Link>
   );
 }

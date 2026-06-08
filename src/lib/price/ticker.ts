@@ -47,6 +47,18 @@ const CRYPTO_PAIRS: Record<string, string> = {
 };
 
 /**
+ * Reverse of {@link CRYPTO_PAIRS}: a pricing pair ("PAXG-USD") → its canonical
+ * base symbol ("PAXG"). Lets us recognise the pair form when it surfaces as a
+ * symbol (cost_basis tickers, asset URLs) instead of mislabelling it unknown.
+ */
+const PAIR_TO_BASE: Record<string, string> = {};
+for (const [base, pair] of Object.entries(CRYPTO_PAIRS)) {
+  // First base wins, so a pair shared by wrapped variants (WBNB→BNB-USD) keeps
+  // the canonical symbol (BNB), not the wrapper.
+  if (!(pair in PAIR_TO_BASE)) PAIR_TO_BASE[pair] = base;
+}
+
+/**
  * Overrides for tokenized stocks whose stripped symbol is NOT the real ticker,
  * or that need a non-default mapping. The common case (strip trailing `on`) is
  * handled automatically; this is only for exceptions.
@@ -74,6 +86,16 @@ export function isTokenizedStock(symbol: string): boolean {
   // Suffix is lower-case `on` on an upper-case ticker (e.g. NVDAon). Require at
   // least one preceding upper-case letter so plain words don't false-positive.
   return /^[A-Z]{1,6}on$/.test(symbol);
+}
+
+/**
+ * Canonical display/route symbol: collapses a Yahoo pricing pair ("PAXG-USD",
+ * "BTC-USD") to its base asset ("PAXG", "BTC"); every other symbol is returned
+ * unchanged. Keeps one asset from showing twice (e.g. dashboard "PAXG-USD" vs
+ * holdings "PAXG") and unifies both to a single detail route.
+ */
+export function canonicalSymbol(symbol: string): string {
+  return PAIR_TO_BASE[symbol.toUpperCase()] ?? symbol;
 }
 
 /** True if the symbol is a stablecoin (treated as $1 cash). */
@@ -127,6 +149,21 @@ export function resolveToken(symbol: string): ResolvedToken {
       kind: upper === "PAXG" ? "gold" : "crypto",
       ticker: CRYPTO_PAIRS[upper],
       displayName: upper,
+      issuer: null,
+    };
+  }
+
+  // The cost_basis / price layer stores the Yahoo pricing PAIR (e.g. "PAXG-USD",
+  // "BTC-USD") as a ticker. When that pair form reaches us as a symbol, resolve
+  // it back to its base asset so it's priced/charted like "PAXG", not treated as
+  // an unknown spam token.
+  const base = PAIR_TO_BASE[upper];
+  if (base) {
+    return {
+      symbol,
+      kind: base === "PAXG" ? "gold" : "crypto",
+      ticker: upper,
+      displayName: base,
       issuer: null,
     };
   }

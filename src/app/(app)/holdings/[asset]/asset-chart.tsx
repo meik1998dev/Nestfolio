@@ -78,6 +78,14 @@ export function AssetChart({
     series.length > 1 &&
     series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4);
   const data = series.map((p) => ({ ...p, label: axisLabel(p.date, multiYear) }));
+
+  // P&L view: drop the flat run before the first activity (no holdings and no
+  // realized/total P&L yet) so the chart starts where the investment does.
+  const firstActivity = data.findIndex(
+    (p) => (p.held ?? 0) !== 0 || (p.realized ?? 0) !== 0 || (p.total ?? 0) !== 0,
+  );
+  const pnlData = firstActivity > 0 ? data.slice(firstActivity) : data;
+
   const total = data.length ? data[data.length - 1].total : null;
   const trendUp =
     view === "pnl"
@@ -201,7 +209,7 @@ export function AssetChart({
               />
             </AreaChart>
           ) : (
-            <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+            <AreaChart data={pnlData} margin={{ left: 4, right: 8, top: 8 }}>
               <defs>
                 <linearGradient id="assetPnlFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={trendColor} stopOpacity={0.3} />

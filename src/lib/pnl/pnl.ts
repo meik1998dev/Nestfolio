@@ -55,7 +55,7 @@ export async function getPnl(
   // RLS scopes these reads to the user; no explicit user_id filter needed.
   const { data: cbRows, error: cbErr } = await supabase
     .from("cost_basis")
-    .select("ticker, shares, cost_basis, realized_pnl");
+    .select("ticker, shares, cost_basis, realized_pnl, wallet_id");
   if (cbErr) throw new Error(`read cost_basis: ${cbErr.message}`);
 
   const positions: LedgerPosition[] = (cbRows ?? []).map(
@@ -64,11 +64,13 @@ export async function getPnl(
       shares: number;
       cost_basis: number;
       realized_pnl: number;
+      wallet_id: string | null;
     }) => ({
       ticker: r.ticker,
       shares: Number(r.shares),
       costBasis: Number(r.cost_basis),
       realizedPnl: Number(r.realized_pnl),
+      walletId: r.wallet_id ?? undefined,
     }),
   );
 
