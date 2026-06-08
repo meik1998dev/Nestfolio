@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -27,6 +27,23 @@ export const metadata: Metadata = {
   },
   description:
     "Personal wealth command center — net worth, portfolios, and PnL.",
+  // Installable-PWA hints. `manifest`, `icon`, and `apple-icon` <link> tags are
+  // auto-injected by Next from manifest.ts / icon.tsx / apple-icon.tsx.
+  applicationName: "Nestfolio",
+  appleWebApp: {
+    capable: true,
+    title: "Nestfolio",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+// Browser UI / mobile address-bar tint. Matches the app's emerald accent on
+// dark, with a light fallback so the bar isn't jarring in light mode.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#059669" },
+  ],
 };
 
 export default function RootLayout({

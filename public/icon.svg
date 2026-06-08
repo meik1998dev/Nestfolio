@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Nestfolio">
+  <rect width="512" height="512" fill="#059669" />
+  <text
+    x="50%"
+    y="50%"
+    dy="0.02em"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+    font-size="320"
+    font-weight="700"
+    fill="#ffffff"
+  >N</text>
+</svg>
