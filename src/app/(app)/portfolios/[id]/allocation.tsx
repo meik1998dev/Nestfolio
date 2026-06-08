@@ -9,7 +9,7 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { AllocationSlice } from "@/lib/portfolio/detail";
 import Link from "next/link";
-import { formatRatioPct, formatPct } from "@/lib/format";
+import { formatRatioPct, formatPct, formatUSD } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AssetLink } from "@/components/asset-link";
 
@@ -53,6 +53,16 @@ export function TargetAllocationPie({ slices }: { slices: AllocationSlice[] }) {
 
   const colorFor = (i: number) => PALETTE[i % PALETTE.length];
   const anyTarget = slices.some((s) => s.targetPct != null);
+
+  // Subtree total (slices cover the whole value) — converts target% → dollars.
+  const totalValue = slices.reduce((sum, s) => sum + s.value, 0);
+  // Dollars to buy (+) or sell (−) to hit target. Only meaningful past the
+  // 0.5pp drift threshold; smaller drifts are treated as already on-target.
+  const tradeToTarget = (s: AllocationSlice): number | null => {
+    if (s.targetPct == null || s.driftPct == null) return null;
+    if (Math.abs(s.driftPct) < 0.5) return null;
+    return (totalValue * s.targetPct) / 100 - s.value;
+  };
 
   // Outer ring data: each asset's target, plus an "Untargeted" remainder.
   const targetSum = slices.reduce((s, x) => s + (x.targetPct ?? 0), 0);
@@ -133,50 +143,54 @@ export function TargetAllocationPie({ slices }: { slices: AllocationSlice[] }) {
       </ResponsiveContainer>
 
       <ul className="flex-1 space-y-2 text-sm">
-        {slices.map((s, i) => (
-          <li key={s.key} className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2">
-              <span
-                className="inline-block size-2.5 rounded-full"
-                style={{ background: colorFor(i) }}
-              />
-              {s.kind === "portfolio" && s.href ? (
-                <Link
-                  href={s.href}
-                  className="hover:text-primary font-medium hover:underline"
-                >
-                  {s.label}
-                </Link>
-              ) : (
-                <AssetLink symbol={s.symbol ?? s.label}>{s.label}</AssetLink>
-              )}
-            </span>
-            <span className="flex items-center gap-2 tabular-nums">
-              <span>{formatRatioPct(s.share)}</span>
-              {s.targetPct != null ? (
-                <>
-                  <span className="text-muted-foreground">
-                    / {formatPct(s.targetPct)}
-                  </span>
-                  {s.driftPct != null && Math.abs(s.driftPct) >= 0.05 && (
-                    <span
-                      className={cn(
-                        "text-xs",
-                        s.driftPct < 0
-                          ? "text-red-600 dark:text-red-500"
-                          : "text-emerald-600 dark:text-emerald-500",
-                      )}
-                    >
-                      {formatPct(s.driftPct, { signed: true })}
+        {slices.map((s, i) => {
+          const trade = tradeToTarget(s);
+          return (
+            <li key={s.key} className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <span
+                  className="inline-block size-2.5 rounded-full"
+                  style={{ background: colorFor(i) }}
+                />
+                {s.kind === "portfolio" && s.href ? (
+                  <Link
+                    href={s.href}
+                    className="hover:text-primary font-medium hover:underline"
+                  >
+                    {s.label}
+                  </Link>
+                ) : (
+                  <AssetLink symbol={s.symbol ?? s.label}>{s.label}</AssetLink>
+                )}
+              </span>
+              <span className="flex items-center gap-2 tabular-nums">
+                <span>{formatRatioPct(s.share)}</span>
+                {s.targetPct != null ? (
+                  <>
+                    <span className="text-muted-foreground">
+                      / {formatPct(s.targetPct)}
                     </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-muted-foreground">/ —</span>
-              )}
-            </span>
-          </li>
-        ))}
+                    {trade != null && (
+                      <span
+                        className={cn(
+                          "text-xs",
+                          trade < 0
+                            ? "text-red-600 dark:text-red-500"
+                            : "text-emerald-600 dark:text-emerald-500",
+                        )}
+                      >
+                        {trade < 0 ? "Sell " : "Buy "}
+                        {formatUSD(Math.abs(trade))}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">/ —</span>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
