@@ -85,10 +85,10 @@ export function TargetAllocationPie({ slices }: { slices: AllocationSlice[] }) {
   // Subtree total (slices cover the whole value) — converts target% → dollars.
   const totalValue = slices.reduce((sum, s) => sum + s.value, 0);
   // Dollars to buy (+) or sell (−) to hit target. Only meaningful past the
-  // 0.5pp drift threshold; smaller drifts are treated as already on-target.
+  // 1pp drift threshold; smaller drifts are treated as already on-target.
   const tradeToTarget = (s: AllocationSlice): number | null => {
     if (s.targetPct == null || s.driftPct == null) return null;
-    if (Math.abs(s.driftPct) < 0.5) return null;
+    if (Math.abs(s.driftPct) < 1) return null;
     return (totalValue * s.targetPct) / 100 - s.value;
   };
 
