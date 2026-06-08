@@ -50,7 +50,7 @@ export function AppShell({
   return (
     <div className="flex min-h-svh">
       {/* Desktop sidebar */}
-      <aside className="bg-card hidden w-60 shrink-0 flex-col border-r md:flex">
+      <aside className="bg-card sticky top-0 hidden h-svh w-60 shrink-0 flex-col border-r md:flex">
         <Brand />
         {nav}
         <UserFooter email={email} />

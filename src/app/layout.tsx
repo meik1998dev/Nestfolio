@@ -21,7 +21,10 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nestfolio",
+  title: {
+    default: "Nestfolio",
+    template: "%s · Nestfolio",
+  },
   description:
     "Personal wealth command center — net worth, portfolios, and PnL.",
 };

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
@@ -65,6 +66,16 @@ function directionColor(type: string): string {
 /** "—" for null P&L (no live price), else a signed USD figure. */
 function pnl(value: number | null): string {
   return value == null ? "—" : formatUSD(value, { signed: true });
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ asset: string }>;
+}): Promise<Metadata> {
+  const { asset } = await params;
+  const symbol = decodeURIComponent(asset).toUpperCase();
+  return { title: symbol, description: `${symbol} position, trades, and PnL.` };
 }
 
 export default async function AssetPage({

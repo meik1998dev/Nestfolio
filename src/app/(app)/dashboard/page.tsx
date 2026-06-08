@@ -44,6 +44,13 @@ import { SnapshotButton } from "./snapshot-button";
 import { PnlTimeframeCards } from "./pnl-timeframe-cards";
 import { RecomputeButton } from "./recompute-button";
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "Net worth, allocation, and performance at a glance.",
+};
+
 export default async function DashboardPage({
   searchParams,
 }: {

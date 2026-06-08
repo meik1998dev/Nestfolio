@@ -17,6 +17,13 @@ import { HoldingForm } from "./holding-form";
 import { DeleteButton } from "@/components/delete-button";
 import { AssetLink } from "@/components/asset-link";
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Holdings",
+  description: "Every asset you hold, with quantity, value, and PnL.",
+};
+
 export default async function HoldingsPage() {
   const holdings = await listHoldings();
   // Live USD value per holding (manual + wallet), priced from the API.

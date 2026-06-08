@@ -40,6 +40,13 @@ const STATUS: Record<
   error: { label: "Error", variant: "destructive", icon: AlertTriangle },
 };
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Wallet",
+  description: "On-chain wallet sync — balances and transaction import.",
+};
+
 export default async function WalletPage() {
   const wallet = await getWallet();
   const balances = wallet ? await getSyncedBalances(wallet.address) : [];

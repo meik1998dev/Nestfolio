@@ -37,6 +37,13 @@ import { EditPortfolioButton } from "./edit-portfolio";
 import { DeleteButton } from "@/components/delete-button";
 import { AssignSelect } from "./assign-select";
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Portfolios",
+  description: "Organize holdings into portfolios and track targets.",
+};
+
 export default async function PortfoliosPage() {
   const [portfolios, holdings] = await Promise.all([
     listPortfolios(),

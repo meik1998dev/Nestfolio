@@ -51,6 +51,13 @@ function directionColor(type: string): string {
   return "";
 }
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Transactions",
+  description: "Full trade and transfer history across your portfolios.",
+};
+
 export default async function TransactionsPage() {
   const [manual, wallet] = await Promise.all([
     listTransactions(),

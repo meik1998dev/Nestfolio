@@ -4,6 +4,7 @@
  * Server Component: `getPortfolioDetail` assembles the data; small client charts
  * (reused from the dashboard) render it.
  */
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
@@ -46,6 +47,20 @@ import { PerformanceChart } from "@/components/performance-chart";
 import { PnlStatTabs } from "@/components/pnl-stat-tabs";
 import { TargetAllocationPie } from "./allocation";
 import { TargetInput } from "./target-input";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const detail = await getPortfolioDetail(id);
+  if (!detail) return { title: "Portfolio" };
+  return {
+    title: detail.name,
+    description: `${detail.name} — value, allocation, and PnL.`,
+  };
+}
 
 export default async function PortfolioDetailPage({
   params,
