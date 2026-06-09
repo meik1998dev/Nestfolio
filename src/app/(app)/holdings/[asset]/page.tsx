@@ -50,7 +50,10 @@ import { PositionPlanner } from "./position-planner";
 
 const TYPE_BADGE: Record<
   string,
-  { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
+  {
+    label: string;
+    variant: "default" | "secondary" | "outline" | "destructive";
+  }
 > = {
   buy: { label: "Buy", variant: "default" },
   sell: { label: "Sell", variant: "secondary" },
@@ -151,7 +154,9 @@ async function AssetContent({
     detail.unrealized != null &&
     detail.total != null;
   const windowed = showTabs
-    ? await getTimeframePnl({ tickers: new Set([detail.ticker!.toUpperCase()]) })
+    ? await getTimeframePnl({
+        tickers: new Set([detail.ticker!.toUpperCase()]),
+      })
     : [];
   const timeframes: TimeframePnl[] = showTabs
     ? [
@@ -186,10 +191,11 @@ async function AssetContent({
               <span className="text-foreground font-medium">
                 {detail.symbol}
               </span>{" "}
-              isn&apos;t recognized by the price feed, so it can&apos;t be valued,
-              charted, or have P&amp;L. This is usually an airdropped or spam token.
-              If it&apos;s a real asset, re-add the holding under its market ticker
-              (e.g. <span className="font-medium">AAPL</span>).
+              isn&apos;t recognized by the price feed, so it can&apos;t be
+              valued, charted, or have P&amp;L. This is usually an airdropped or
+              spam token. If it&apos;s a real asset, re-add the holding under
+              its market ticker (e.g. <span className="font-medium">AAPL</span>
+              ).
             </p>
           </div>
         )}
@@ -249,7 +255,9 @@ async function AssetContent({
             />
             <Metric
               label="Live price"
-              value={detail.livePrice != null ? formatUSD(detail.livePrice) : "—"}
+              value={
+                detail.livePrice != null ? formatUSD(detail.livePrice) : "—"
+              }
             />
             <Metric
               label="Market value"
@@ -423,7 +431,9 @@ function StatCard({
           {icon}
           {label}
         </div>
-        <p className={cn("mt-1 text-2xl font-semibold tabular-nums", valueClass)}>
+        <p
+          className={cn("mt-1 text-2xl font-semibold tabular-nums", valueClass)}
+        >
           {value}
         </p>
       </CardContent>

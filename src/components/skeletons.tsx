@@ -1,8 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +49,9 @@ export function CardSkeleton({
         </CardHeader>
       )}
       {body && (
-        <CardContent className={title || descriptionLines > 0 ? undefined : "pt-6"}>
+        <CardContent
+          className={title || descriptionLines > 0 ? undefined : "pt-6"}
+        >
           <Skeleton className={cn("w-full", bodyHeight)} />
         </CardContent>
       )}
@@ -89,7 +87,11 @@ export function StatCardsSkeleton({
   };
   return (
     <div
-      className={cn("grid grid-cols-2 gap-4", COLS[breakpoint][columns], className)}
+      className={cn(
+        "grid grid-cols-2 gap-4",
+        COLS[breakpoint][columns],
+        className,
+      )}
     >
       {Array.from({ length: count }).map((_, i) => (
         <Card key={i}>
@@ -129,7 +131,9 @@ export function TableSkeleton({
   descriptionLines?: number;
   className?: string;
 } = {}) {
-  const gridTemplate = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` };
+  const gridTemplate = {
+    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+  };
 
   const grid = (
     <div className={cn("w-full", !card && className)}>

@@ -96,9 +96,19 @@ async function HoldingsContent() {
             columns={[
               { key: "asset", header: "Asset" },
               { key: "source", header: "Source" },
-              { key: "amount", header: "Amount", align: "right", sortable: true },
+              {
+                key: "amount",
+                header: "Amount",
+                align: "right",
+                sortable: true,
+              },
               { key: "value", header: "Value", align: "right", sortable: true },
-              { key: "actions", header: "", align: "right", headClassName: "w-10" },
+              {
+                key: "actions",
+                header: "",
+                align: "right",
+                headClassName: "w-10",
+              },
             ]}
             rows={holdings.map((holding) => {
               const value = holdingValues.get(holding.id) ?? 0;
