@@ -116,7 +116,9 @@ async function DashboardBody({
   const { range } = await searchParams;
   const [summary, performance, pnl, windowed] = await Promise.all([
     getNetWorthSummary(),
-    getPortfolioPerformance(parsePerfRange(range)),
+    // `benchmark: true` populates returnPct + the SPY mirror, so the chart's
+    // "Return %" view and the S&P 500 overlay have data (else they render blank).
+    getPortfolioPerformance(parsePerfRange(range), { benchmark: true }),
     getPnl(userId),
     getTimeframePnl(),
   ]);
