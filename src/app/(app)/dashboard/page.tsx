@@ -37,7 +37,7 @@ import {
 } from "@/lib/insights/performance";
 import { getPnl, type PnlView } from "@/lib/pnl/pnl";
 import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/server";
 import { PerformanceChart } from "@/components/performance-chart";
 import { AllocationPie } from "./charts";
 import { SnapshotButton } from "./snapshot-button";
@@ -56,10 +56,8 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ range?: string }>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Deduped with the (app) layout's auth check via React `cache()`.
+  const user = await getCachedUser();
   const userId = user!.id;
 
   const { range } = await searchParams;

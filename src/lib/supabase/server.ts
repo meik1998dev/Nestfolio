@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
@@ -23,3 +24,18 @@ export async function createClient() {
     },
   });
 }
+
+/**
+ * Authenticated user for the current request, deduped via React `cache()`.
+ *
+ * `cache()` memoizes per request/render pass (not across requests), so when the
+ * (app) layout and a page both need the user in the same render, Supabase
+ * `auth.getUser()` runs once instead of once per call site.
+ */
+export const getCachedUser = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});
