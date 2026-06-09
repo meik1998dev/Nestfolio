@@ -3,10 +3,7 @@ import Link from "next/link";
 import { FolderTree, Scale, Inbox, TriangleAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  HeroValueSkeleton,
-  TableSkeleton,
-} from "@/components/skeletons";
+import { HeroValueSkeleton, TableSkeleton } from "@/components/skeletons";
 import {
   Card,
   CardContent,
@@ -347,7 +344,12 @@ async function PortfoliosContent() {
               columns={[
                 { key: "asset", header: "Asset" },
                 { key: "source", header: "Source" },
-                { key: "value", header: "Value", align: "right", sortable: true },
+                {
+                  key: "value",
+                  header: "Value",
+                  align: "right",
+                  sortable: true,
+                },
                 { key: "assign", header: "Assign to", headClassName: "w-56" },
               ]}
               rows={unassigned.map((h) => {

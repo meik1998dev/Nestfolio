@@ -40,17 +40,15 @@ function parseTargetPct(raw: FormDataEntryValue | null): number | null {
  * /portfolios page now resolves it twice in the same render — once in the header
  * `PortfolioForm` Suspense, once in the body content — and this dedups them.
  */
-export const listPortfolios = cache(
-  async (): Promise<Portfolio[]> => {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("portfolios")
-      .select("*")
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []) as Portfolio[];
-  },
-);
+export const listPortfolios = cache(async (): Promise<Portfolio[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("portfolios")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Portfolio[];
+});
 
 /**
  * Would setting `nodeId`'s parent to `parentId` create a cycle? True if

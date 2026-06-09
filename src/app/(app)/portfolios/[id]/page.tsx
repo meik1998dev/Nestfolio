@@ -197,8 +197,8 @@ async function PortfolioDetailContent({
               Performance
             </CardTitle>
             <CardDescription>
-              Value, P&amp;L, and return over time — with an optional S&amp;P 500
-              benchmark.
+              Value, P&amp;L, and return over time — with an optional S&amp;P
+              500 benchmark.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -253,11 +253,36 @@ async function PortfolioDetailContent({
                 initialSort={{ key: "value", dir: "desc" }}
                 columns={[
                   { key: "asset", header: "Asset" },
-                  { key: "amount", header: "Amount", align: "right", sortable: true },
-                  { key: "value", header: "Value", align: "right", sortable: true },
-                  { key: "unrealized", header: "Unrealized", align: "right", sortable: true },
-                  { key: "total", header: "Total P&L", align: "right", sortable: true },
-                  { key: "target", header: "Target", align: "right", headClassName: "w-28" },
+                  {
+                    key: "amount",
+                    header: "Amount",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
+                    key: "value",
+                    header: "Value",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
+                    key: "unrealized",
+                    header: "Unrealized",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
+                    key: "total",
+                    header: "Total P&L",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
+                    key: "target",
+                    header: "Target",
+                    align: "right",
+                    headClassName: "w-28",
+                  },
                 ]}
                 rows={detail.holdings.map((h) => ({
                   key: h.holding.id,
