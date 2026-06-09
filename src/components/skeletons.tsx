@@ -64,27 +64,33 @@ export function CardSkeleton({
 /**
  * Responsive grid of small stat cards (label line + value line each). Mirrors
  * the dashboard's `grid-cols-2 lg:grid-cols-4` stat strip and the static-PnL
- * fallback grid on the asset detail page.
+ * fallback grids on the asset detail / decision pages. Columns expand at the
+ * given breakpoint so the fallback matches grids that break at `sm` (asset
+ * detail) as well as the dashboard's `lg` strip.
  */
 export function StatCardsSkeleton({
   /** How many stat cards to render. */
   count = 4,
-  /** Columns at the `lg` breakpoint (cards are always 2-wide on mobile). */
+  /** Columns once expanded (cards are always 2-wide on mobile). */
   columns = 4,
+  /** Breakpoint at which the grid expands to `columns`. */
+  breakpoint = "lg",
   className,
 }: {
   count?: number;
   columns?: 2 | 3 | 4;
+  breakpoint?: "sm" | "lg";
   className?: string;
 } = {}) {
-  const lgCols =
-    columns === 2
-      ? "lg:grid-cols-2"
-      : columns === 3
-        ? "lg:grid-cols-3"
-        : "lg:grid-cols-4";
+  // Static literals only — Tailwind v4 scans source, so no dynamic class names.
+  const COLS: Record<"sm" | "lg", Record<2 | 3 | 4, string>> = {
+    sm: { 2: "sm:grid-cols-2", 3: "sm:grid-cols-3", 4: "sm:grid-cols-4" },
+    lg: { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" },
+  };
   return (
-    <div className={cn("grid grid-cols-2 gap-4", lgCols, className)}>
+    <div
+      className={cn("grid grid-cols-2 gap-4", COLS[breakpoint][columns], className)}
+    >
       {Array.from({ length: count }).map((_, i) => (
         <Card key={i}>
           <CardContent className="space-y-2 pt-6">
