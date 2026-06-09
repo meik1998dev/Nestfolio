@@ -1,6 +1,12 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { FolderTree, Scale, Inbox, TriangleAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  HeroValueSkeleton,
+  TableSkeleton,
+} from "@/components/skeletons";
 import {
   Card,
   CardContent,
@@ -44,7 +50,57 @@ export const metadata: Metadata = {
   description: "Organize holdings into portfolios and track targets.",
 };
 
-export default async function PortfoliosPage() {
+/**
+ * Synchronous shell: paints the static chrome (PageHeader) instantly without
+ * awaiting any slow data. The header's "New portfolio" action and the whole
+ * data-driven body each stream in behind their own <Suspense> boundary.
+ *
+ * The header form needs the portfolio list (for its parent-picker), so we can't
+ * keep it fully static — instead we give it a tiny dedicated Suspense with a
+ * button-sized fallback so the rest of the header (title/description) still
+ * paints immediately. `listPortfolios` is request-cached, so the form loader and
+ * the body content below collapse to a single DB read.
+ */
+export default function PortfoliosPage() {
+  return (
+    <>
+      <PageHeader
+        title="Portfolios"
+        description="Group holdings into nested portfolios, set target allocations, and rebalance."
+      >
+        <Suspense fallback={<Skeleton className="h-9 w-36" />}>
+          <PortfolioFormLoader />
+        </Suspense>
+      </PageHeader>
+
+      <Suspense fallback={<PortfoliosSkeleton />}>
+        <PortfoliosContent />
+      </Suspense>
+    </>
+  );
+}
+
+/** Loads the portfolio list for the header's create-form parent picker. */
+async function PortfolioFormLoader() {
+  const portfolios = await listPortfolios();
+  return <PortfolioForm portfolios={portfolios} />;
+}
+
+/** Fallback mirroring the streamed body: hero value + tree table + unassigned. */
+function PortfoliosSkeleton() {
+  return (
+    <>
+      <HeroValueSkeleton className="mb-6" />
+      {/* Tree: Portfolio, Target %, % of parent, Value, actions */}
+      <TableSkeleton columns={5} />
+      {/* Unassigned holdings: Asset, Source, Value, Assign to */}
+      <TableSkeleton columns={4} className="mt-6" />
+    </>
+  );
+}
+
+/** All portfolio data fetching + the data-driven Cards. Streamed behind Suspense. */
+async function PortfoliosContent() {
   const [portfolios, holdings] = await Promise.all([
     listPortfolios(),
     listHoldings(),
@@ -65,13 +121,6 @@ export default async function PortfoliosPage() {
 
   return (
     <>
-      <PageHeader
-        title="Portfolios"
-        description="Group holdings into nested portfolios, set target allocations, and rebalance."
-      >
-        <PortfolioForm portfolios={portfolios} />
-      </PageHeader>
-
       {portfolios.length > 0 && (
         <Card className="mb-6">
           <CardHeader>

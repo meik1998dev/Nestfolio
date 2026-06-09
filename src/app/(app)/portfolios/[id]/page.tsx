@@ -4,6 +4,7 @@
  * Server Component: `getPortfolioDetail` assembles the data; small client charts
  * (reused from the dashboard) render it.
  */
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -15,6 +16,13 @@ import {
   LineChart as LineChartIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  HeroValueSkeleton,
+  StatCardsSkeleton,
+  ChartCardSkeleton,
+  TableSkeleton,
+} from "@/components/skeletons";
 import { AssetLink } from "@/components/asset-link";
 import {
   Card,
@@ -62,7 +70,60 @@ export async function generateMetadata({
   };
 }
 
-export default async function PortfolioDetailPage({
+/**
+ * Synchronous shell: paints the always-visible "Portfolios" back-link instantly
+ * (it depends on no data) above a <Suspense> boundary. The PageHeader title and
+ * the full body depend on the fetched detail, so they live inside the async
+ * child and stream in behind the skeleton. params/searchParams flow down as
+ * un-awaited promises so the shell never suspends.
+ */
+export default function PortfolioDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ range?: string }>;
+}) {
+  return (
+    <>
+      <div className="mb-2">
+        <Link
+          href="/portfolios"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
+        >
+          <ArrowLeft className="size-4" />
+          Portfolios
+        </Link>
+      </div>
+
+      <Suspense fallback={<PortfolioDetailSkeleton />}>
+        <PortfolioDetailContent params={params} searchParams={searchParams} />
+      </Suspense>
+    </>
+  );
+}
+
+/** Fallback mirroring the streamed body: header line, hero, PnL tabs, charts, tables. */
+function PortfolioDetailSkeleton() {
+  return (
+    <>
+      {/* PageHeader title line */}
+      <Skeleton className="mb-6 h-9 w-64" />
+      <div className="space-y-6">
+        <HeroValueSkeleton />
+        {/* PnlStatTabs: Return % / Total / Realized / Unrealized */}
+        <StatCardsSkeleton count={4} columns={4} />
+        <ChartCardSkeleton /> {/* Performance */}
+        <ChartCardSkeleton /> {/* Allocation */}
+        <TableSkeleton columns={6} /> {/* Holdings */}
+        <TableSkeleton columns={6} /> {/* Transactions */}
+      </div>
+    </>
+  );
+}
+
+/** All data fetching + the full detail body. Streamed behind Suspense. */
+async function PortfolioDetailContent({
   params,
   searchParams,
 }: {
@@ -102,16 +163,6 @@ export default async function PortfolioDetailPage({
 
   return (
     <>
-      <div className="mb-2">
-        <Link
-          href="/portfolios"
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
-        >
-          <ArrowLeft className="size-4" />
-          Portfolios
-        </Link>
-      </div>
-
       <PageHeader
         title={detail.name}
         description="Value, allocation, PnL, and trades for this portfolio and everything nested under it."

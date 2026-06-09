@@ -14,6 +14,7 @@
  *
  * Degrades gracefully: missing prices → 0 value.
  */
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Holding } from "@/lib/types";
 import { resolveToken } from "@/lib/price/ticker";
@@ -121,11 +122,15 @@ function tickerFor(asset: string): string | null {
 /**
  * Assemble the full detail view for one portfolio, or null if the id doesn't
  * exist (the page renders a 404).
+ *
+ * Wrapped in React `cache()` for request-level dedup: the detail route calls
+ * this once in `generateMetadata` and again in the page render (same `id`,
+ * same request), so without memoization every navigation does the full
+ * assembly twice. `cache()` collapses the pair into one fetch.
  */
-export async function getPortfolioDetail(
-  id: string,
-): Promise<PortfolioDetail | null> {
-  const supabase = await createClient();
+export const getPortfolioDetail = cache(
+  async (id: string): Promise<PortfolioDetail | null> => {
+    const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -301,4 +306,5 @@ export async function getPortfolioDetail(
       (h) => h.amount > 0 && (holdingValues.get(h.id) ?? 0) === 0,
     ),
   };
-}
+  },
+);

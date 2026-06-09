@@ -9,6 +9,7 @@
  * the rebalance engine. We guard reparenting against cycles so the tree stays
  * finite.
  */
+import { cache } from "react";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Portfolio } from "@/lib/types";
@@ -31,16 +32,25 @@ function parseTargetPct(raw: FormDataEntryValue | null): number | null {
   return n;
 }
 
-/** All portfolios for the user, oldest first (stable ordering for the tree). */
-export async function listPortfolios(): Promise<Portfolio[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("portfolios")
-    .select("*")
-    .order("created_at", { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Portfolio[];
-}
+/**
+ * All portfolios for the user, oldest first (stable ordering for the tree).
+ *
+ * Wrapped in React `cache()` so a single request that reads the portfolio list
+ * from more than one place collapses to one DB round-trip. The streamed
+ * /portfolios page now resolves it twice in the same render — once in the header
+ * `PortfolioForm` Suspense, once in the body content — and this dedups them.
+ */
+export const listPortfolios = cache(
+  async (): Promise<Portfolio[]> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("portfolios")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Portfolio[];
+  },
+);
 
 /**
  * Would setting `nodeId`'s parent to `parentId` create a cycle? True if
