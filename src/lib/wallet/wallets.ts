@@ -4,6 +4,7 @@
  * Data access for the user's tracked wallet(s). Single-user app → one wallet,
  * but the schema supports many. We store ONLY the public address — never keys.
  */
+import { cache } from "react";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isValidAddress } from "@/lib/wallet/provider";
@@ -19,8 +20,14 @@ async function requireUserId() {
   return { supabase, userId: user.id };
 }
 
-/** The user's wallet (first one), or null if none saved yet. */
-export async function getWallet(): Promise<Wallet | null> {
+/**
+ * The user's wallet (first one), or null if none saved yet.
+ *
+ * Wrapped in React `cache()` so the streamed /wallet page — which reads the
+ * wallet twice per request (once in the header `SyncButton` Suspense to decide
+ * whether to show it, once in the body content) — collapses to one DB read.
+ */
+export const getWallet = cache(async (): Promise<Wallet | null> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("wallets")
@@ -30,7 +37,7 @@ export async function getWallet(): Promise<Wallet | null> {
     .maybeSingle();
   if (error) throw new Error(error.message);
   return (data as Wallet) ?? null;
-}
+});
 
 /**
  * Save (or upsert) a public BNB address. Validates format and stores only the

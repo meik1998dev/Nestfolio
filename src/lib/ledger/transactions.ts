@@ -6,6 +6,7 @@
  * unit `price`. Manual trades live in the `transactions` table; wallet-synced
  * trades come from `trade_events` (read-only) and are merged for display.
  */
+import { cache } from "react";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Transaction, TransactionType } from "@/lib/types";
@@ -21,8 +22,14 @@ async function requireUserId() {
   return { supabase, userId: user.id };
 }
 
-/** Manual trade log, newest first (the ledger view's default order). */
-export async function listTransactions(): Promise<Transaction[]> {
+/**
+ * Manual trade log, newest first (the ledger view's default order).
+ *
+ * Wrapped in React `cache()` so the streamed /transactions page — which reads
+ * the ledger twice per request (once in the header `TransactionForm` Suspense
+ * for its asset options, once in the body content) — collapses to one DB read.
+ */
+export const listTransactions = cache(async (): Promise<Transaction[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("transactions")
@@ -31,7 +38,7 @@ export async function listTransactions(): Promise<Transaction[]> {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Transaction[];
-}
+});
 
 /** One row of the unified trade history (manual + wallet-synced). */
 export interface TradeRow {
@@ -53,8 +60,12 @@ export interface TradeRow {
  * Wallet-synced trades from `trade_events`, newest first. These are produced by
  * the PnL classifier (F6) and are read-only here — the wallet is their source of
  * truth. Used by the Transactions view to show synced trades alongside manual.
+ *
+ * Wrapped in React `cache()` for the same reason as `listTransactions`: the
+ * streamed /transactions page reads wallet trades from both the header form
+ * loader and the body content, and this dedups them to one DB read per request.
  */
-export async function listWalletTrades(): Promise<TradeRow[]> {
+export const listWalletTrades = cache(async (): Promise<TradeRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("trade_events")
@@ -82,7 +93,7 @@ export async function listWalletTrades(): Promise<TradeRow[]> {
     source: "wallet",
     note: null,
   }));
-}
+});
 
 /** Create a manual trade from a form submission. */
 export async function createTransaction(formData: FormData): Promise<void> {

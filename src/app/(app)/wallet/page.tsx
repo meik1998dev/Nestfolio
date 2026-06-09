@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import {
   Wallet as WalletIcon,
   AlertTriangle,
@@ -5,6 +6,8 @@ import {
   Clock,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CardSkeleton, TableSkeleton } from "@/components/skeletons";
 import {
   Card,
   CardContent,
@@ -47,7 +50,53 @@ export const metadata: Metadata = {
   description: "On-chain wallet sync — balances and transaction import.",
 };
 
-export default async function WalletPage() {
+/**
+ * Synchronous shell: paints the static chrome (PageHeader) instantly without
+ * awaiting any slow data. The header's "Sync now" action (which only shows once
+ * a wallet exists) and the whole data-driven body each stream in behind their
+ * own <Suspense> boundary.
+ *
+ * `getWallet` is request-cached, so the header SyncButton loader and the body
+ * content below collapse to a single DB read.
+ */
+export default function WalletPage() {
+  return (
+    <>
+      <PageHeader
+        title="Wallet"
+        description="Read-only sync of a public BNB-chain address via Moralis. Synced tokens land in the Unassigned bucket — assign them in Portfolios."
+      >
+        <Suspense fallback={<Skeleton className="h-9 w-24" />}>
+          <SyncButtonLoader />
+        </Suspense>
+      </PageHeader>
+
+      <Suspense fallback={<WalletSkeleton />}>
+        <WalletContent />
+      </Suspense>
+    </>
+  );
+}
+
+/** Shows the Sync button only once a wallet address has been saved. */
+async function SyncButtonLoader() {
+  const wallet = await getWallet();
+  return wallet ? <SyncButton /> : null;
+}
+
+/** Fallback mirroring the streamed body: address card + balances table. */
+function WalletSkeleton() {
+  return (
+    <>
+      <CardSkeleton className="mb-6" descriptionLines={2} bodyHeight="h-10" />
+      {/* Balances: Token, Resolves to, Amount, Price, USD value */}
+      <TableSkeleton columns={5} />
+    </>
+  );
+}
+
+/** All wallet data fetching + the data-driven Cards. Streamed behind Suspense. */
+async function WalletContent() {
   const wallet = await getWallet();
   const balances = wallet ? await getSyncedBalances(wallet.address) : [];
 
@@ -58,13 +107,6 @@ export default async function WalletPage() {
 
   return (
     <>
-      <PageHeader
-        title="Wallet"
-        description="Read-only sync of a public BNB-chain address via Moralis. Synced tokens land in the Unassigned bucket — assign them in Portfolios."
-      >
-        {wallet && <SyncButton />}
-      </PageHeader>
-
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -150,9 +192,24 @@ export default async function WalletPage() {
               columns={[
                 { key: "token", header: "Token" },
                 { key: "resolves", header: "Resolves to" },
-                { key: "amount", header: "Amount", align: "right", sortable: true },
-                { key: "price", header: "Price", align: "right", sortable: true },
-                { key: "usdValue", header: "USD value", align: "right", sortable: true },
+                {
+                  key: "amount",
+                  header: "Amount",
+                  align: "right",
+                  sortable: true,
+                },
+                {
+                  key: "price",
+                  header: "Price",
+                  align: "right",
+                  sortable: true,
+                },
+                {
+                  key: "usdValue",
+                  header: "USD value",
+                  align: "right",
+                  sortable: true,
+                },
               ]}
               rows={balances.map((b) => ({
                 key: b.asset,
