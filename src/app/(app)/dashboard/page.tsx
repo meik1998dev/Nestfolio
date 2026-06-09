@@ -27,9 +27,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  CardSkeleton,
   ChartCardSkeleton,
   HeroValueSkeleton,
-  StatCardsSkeleton,
   TableSkeleton,
 } from "@/components/skeletons";
 import { SortableTable } from "@/components/sortable-table";
@@ -93,7 +93,7 @@ function DashboardSkeleton() {
     <div className="space-y-6">
       <HeroValueSkeleton />
       <div className="grid gap-4">
-        <StatCardsSkeleton count={1} columns={2} />
+        <CardSkeleton descriptionLines={0} body bodyHeight="h-8" />
       </div>
       <div className="grid gap-4">
         <ChartCardSkeleton />

@@ -11,9 +11,9 @@ import { cn } from "@/lib/utils";
  *
  * Every `(app)` page renders its real `PageHeader` (and any static chrome)
  * instantly, then wraps the data-driven body in a `<Suspense>` whose fallback
- * is composed from these blocks. They mirror the house style established by
- * `app/(app)/dashboard/loading.tsx`: `<Card>` shells with pulsing `<Skeleton>`
- * lines, on a `space-y-6` page rhythm.
+ * is composed from these blocks. They follow the house style for those in-page
+ * `<Suspense>` fallbacks: `<Card>` shells with pulsing `<Skeleton>` lines, on a
+ * `space-y-6` page rhythm.
  *
  * All components here are pure presentational Server Components — no data, no
  * client hooks, no "use client". Do NOT put a `PageHeader` inside these; the
