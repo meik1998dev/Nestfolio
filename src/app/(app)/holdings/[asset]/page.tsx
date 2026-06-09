@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   ArrowLeft,
   TrendingUp,
@@ -12,6 +13,13 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import {
+  CardSkeleton,
+  ChartCardSkeleton,
+  StatCardsSkeleton,
+  TableSkeleton,
+} from "@/components/skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -78,7 +86,44 @@ export async function generateMetadata({
   return { title: symbol, description: `${symbol} position, trades, and PnL.` };
 }
 
-export default async function AssetPage({
+/**
+ * Instant chrome + streamed body: the page shell is synchronous so Next can
+ * flush the page scaffold immediately — the "Holdings" back-link stays visible
+ * on first load and on client navigation (mirroring portfolios/[id]). The
+ * PageHeader title/description depend on the fetched `detail`, so the header
+ * itself plus the whole body stream in behind a `<Suspense>` boundary. The
+ * `params`/`searchParams` promises are passed down un-awaited so the shell never
+ * suspends; `AssetContent` awaits them.
+ */
+export default function AssetPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ asset: string }>;
+  searchParams: Promise<{ range?: string }>;
+}) {
+  return (
+    <>
+      {/* Instant chrome: always-visible back-link, hoisted above Suspense. */}
+      <div className="mb-2">
+        <Link
+          href="/holdings"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
+        >
+          <ArrowLeft className="size-4" />
+          Holdings
+        </Link>
+      </div>
+
+      <Suspense fallback={<AssetSkeleton />}>
+        <AssetContent params={params} searchParams={searchParams} />
+      </Suspense>
+    </>
+  );
+}
+
+/** Streamed body: fetches the asset detail and renders the header + full body. */
+async function AssetContent({
   params,
   searchParams,
 }: {
@@ -131,15 +176,7 @@ export default async function AssetPage({
       <PageHeader
         title={detail.displayName}
         description={`${detail.symbol} · ${detail.kind} · ${heldLabel}`}
-      >
-        <Link
-          href="/holdings"
-          className="text-muted-foreground hover:text-foreground inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium"
-        >
-          <ArrowLeft className="size-4" />
-          Holdings
-        </Link>
-      </PageHeader>
+      />
 
       <div className="space-y-6">
         {detail.kind === "unknown" && (
@@ -344,6 +381,27 @@ export default async function AssetPage({
         </Card>
       </div>
     </>
+  );
+}
+
+/**
+ * Suspense fallback for the streamed body: a header title-line skeleton, the
+ * P&L stat grid (matching the static `grid-cols-2 lg:grid-cols-3` fallback), the
+ * position-summary Card, the Performance chart Card, and the transactions table.
+ */
+function AssetSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header area (title from `detail.displayName` + description line). */}
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-4 w-72" />
+      </div>
+      <StatCardsSkeleton count={3} columns={3} breakpoint="lg" />
+      <CardSkeleton title={false} descriptionLines={0} bodyHeight="h-16" />
+      <ChartCardSkeleton />
+      <TableSkeleton columns={6} />
+    </div>
   );
 }
 

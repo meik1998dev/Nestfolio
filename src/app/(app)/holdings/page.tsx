@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Coins } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -7,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { TableSkeleton } from "@/components/skeletons";
 import { SortableTable } from "@/components/sortable-table";
 import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty } from "@/lib/format";
@@ -24,7 +26,32 @@ export const metadata: Metadata = {
   description: "Every asset you hold, with quantity, value, and PnL.",
 };
 
-export default async function HoldingsPage() {
+/**
+ * Instant chrome + streamed body: the page shell is synchronous so Next can
+ * flush the `PageHeader` (and its "Add holding" action) immediately — on first
+ * load and on client navigation — while the data-dependent positions table
+ * streams in behind a `<Suspense>` boundary. `HoldingForm` needs no data, so it
+ * lives in the instant header.
+ */
+export default function HoldingsPage() {
+  return (
+    <>
+      <PageHeader
+        title="Holdings"
+        description="The assets you own — added manually or synced from your wallet. Priced live from market data."
+      >
+        <HoldingForm />
+      </PageHeader>
+
+      <Suspense fallback={<HoldingsSkeleton />}>
+        <HoldingsContent />
+      </Suspense>
+    </>
+  );
+}
+
+/** Streamed body: all slow data + the positions Card live here. */
+async function HoldingsContent() {
   const holdings = await listHoldings();
   // Live USD value per holding (manual + wallet), priced from the API.
   const prices = await getLivePricesForHoldings(holdings);
@@ -35,104 +62,103 @@ export default async function HoldingsPage() {
   );
 
   return (
-    <>
-      <PageHeader
-        title="Holdings"
-        description="The assets you own — added manually or synced from your wallet. Priced live from market data."
-      >
-        <HoldingForm />
-      </PageHeader>
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div className="space-y-1.5">
-            <CardTitle className="flex items-center gap-2">
-              <Coins className="text-muted-foreground size-4" />
-              Positions
-            </CardTitle>
-            <CardDescription>
-              {holdings.length > 0 ? (
-                <span className="text-foreground font-medium tabular-nums">
-                  Total {formatUSD(holdingsTotal)}.
-                </span>
-              ) : (
-                "Add a manual position or sync a wallet."
-              )}
-            </CardDescription>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <div className="space-y-1.5">
+          <CardTitle className="flex items-center gap-2">
+            <Coins className="text-muted-foreground size-4" />
+            Positions
+          </CardTitle>
+          <CardDescription>
+            {holdings.length > 0 ? (
+              <span className="text-foreground font-medium tabular-nums">
+                Total {formatUSD(holdingsTotal)}.
+              </span>
+            ) : (
+              "Add a manual position or sync a wallet."
+            )}
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {holdings.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="font-medium">No holdings yet</p>
+            <p className="text-muted-foreground max-w-sm text-sm">
+              Add a manual position — units of an asset like BTC, gold, or
+              shares — or sync a wallet.
+            </p>
+            <HoldingForm />
           </div>
-        </CardHeader>
-        <CardContent>
-          {holdings.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <p className="font-medium">No holdings yet</p>
-              <p className="text-muted-foreground max-w-sm text-sm">
-                Add a manual position — units of an asset like BTC, gold, or
-                shares — or sync a wallet.
-              </p>
-              <HoldingForm />
-            </div>
-          ) : (
-            <SortableTable
-              initialSort={{ key: "value", dir: "desc" }}
-              columns={[
-                { key: "asset", header: "Asset" },
-                { key: "source", header: "Source" },
-                { key: "amount", header: "Amount", align: "right", sortable: true },
-                { key: "value", header: "Value", align: "right", sortable: true },
-                { key: "actions", header: "", align: "right", headClassName: "w-10" },
-              ]}
-              rows={holdings.map((holding) => {
-                const value = holdingValues.get(holding.id) ?? 0;
-                const priced = holding.amount > 0 ? value > 0 : true;
-                return {
-                  key: holding.id,
-                  sort: {
-                    amount: holding.amount,
-                    value: priced ? value : null,
-                  },
-                  cells: {
-                    asset: (
-                      <span className="font-medium">
-                        <AssetLink symbol={holding.asset} />
-                      </span>
-                    ),
-                    source: (
-                      <Badge
-                        variant={
-                          holding.source === "wallet" ? "outline" : "secondary"
-                        }
-                      >
-                        {holding.source === "wallet" ? "Wallet" : "Manual"}
-                      </Badge>
-                    ),
-                    amount: (
-                      <span className="tabular-nums">
-                        {formatQty(holding.amount)}
-                      </span>
-                    ),
-                    value: priced ? (
-                      <span className="tabular-nums">{formatUSD(value)}</span>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">
-                        no price
-                      </span>
-                    ),
-                    actions:
-                      holding.source === "manual" ? (
-                        <DeleteButton
-                          id={holding.id}
-                          action={deleteHolding}
-                          label={`Delete ${holding.asset}`}
-                          successMessage="Holding deleted"
-                        />
-                      ) : null,
-                  },
-                };
-              })}
-            />
-          )}
-        </CardContent>
-      </Card>
-    </>
+        ) : (
+          <SortableTable
+            initialSort={{ key: "value", dir: "desc" }}
+            columns={[
+              { key: "asset", header: "Asset" },
+              { key: "source", header: "Source" },
+              { key: "amount", header: "Amount", align: "right", sortable: true },
+              { key: "value", header: "Value", align: "right", sortable: true },
+              { key: "actions", header: "", align: "right", headClassName: "w-10" },
+            ]}
+            rows={holdings.map((holding) => {
+              const value = holdingValues.get(holding.id) ?? 0;
+              const priced = holding.amount > 0 ? value > 0 : true;
+              return {
+                key: holding.id,
+                sort: {
+                  amount: holding.amount,
+                  value: priced ? value : null,
+                },
+                cells: {
+                  asset: (
+                    <span className="font-medium">
+                      <AssetLink symbol={holding.asset} />
+                    </span>
+                  ),
+                  source: (
+                    <Badge
+                      variant={
+                        holding.source === "wallet" ? "outline" : "secondary"
+                      }
+                    >
+                      {holding.source === "wallet" ? "Wallet" : "Manual"}
+                    </Badge>
+                  ),
+                  amount: (
+                    <span className="tabular-nums">
+                      {formatQty(holding.amount)}
+                    </span>
+                  ),
+                  value: priced ? (
+                    <span className="tabular-nums">{formatUSD(value)}</span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">
+                      no price
+                    </span>
+                  ),
+                  actions:
+                    holding.source === "manual" ? (
+                      <DeleteButton
+                        id={holding.id}
+                        action={deleteHolding}
+                        label={`Delete ${holding.asset}`}
+                        successMessage="Holding deleted"
+                      />
+                    ) : null,
+                },
+              };
+            })}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
+}
+
+/**
+ * Suspense fallback mirroring the single positions Card: title + description
+ * line, then a 5-column table (Asset, Source, Amount, Value, actions).
+ */
+function HoldingsSkeleton() {
+  return <TableSkeleton columns={5} />;
 }
