@@ -17,6 +17,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 import { PageHeader } from "@/components/page-header";
 import {
   Card,
@@ -25,6 +26,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  ChartCardSkeleton,
+  HeroValueSkeleton,
+  StatCardsSkeleton,
+  TableSkeleton,
+} from "@/components/skeletons";
 import { SortableTable } from "@/components/sortable-table";
 import { AssetLink } from "@/components/asset-link";
 import { formatUSD, formatQty, formatRatioPct, pnlColor } from "@/lib/format";
@@ -51,7 +58,53 @@ export const metadata: Metadata = {
   description: "Net worth, allocation, and performance at a glance.",
 };
 
-export default async function DashboardPage({
+/**
+ * Instant chrome + streamed body: the page shell is synchronous so Next can
+ * flush the `PageHeader` (and its action buttons) immediately — on first load
+ * and on client navigation — while the data-dependent body streams in behind a
+ * `<Suspense>` boundary. The `searchParams` promise is passed down un-awaited so
+ * the shell never suspends; `DashboardBody` awaits it.
+ */
+export default function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  return (
+    <>
+      <PageHeader
+        title="Portfolio"
+        description="Everything you hold, valued live — at a glance."
+      >
+        <SnapshotButton variant="outline" label="Snapshot" />
+        <RecomputeButton />
+      </PageHeader>
+
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardBody searchParams={searchParams} />
+      </Suspense>
+    </>
+  );
+}
+
+/** Composed fallback mirroring the real body's spacing and shape. */
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <HeroValueSkeleton />
+      <div className="grid gap-4">
+        <StatCardsSkeleton count={1} columns={2} />
+      </div>
+      <div className="grid gap-4">
+        <ChartCardSkeleton />
+      </div>
+      <ChartCardSkeleton />
+      <TableSkeleton rows={6} columns={9} />
+    </div>
+  );
+}
+
+async function DashboardBody({
   searchParams,
 }: {
   searchParams: Promise<{ range?: string }>;
@@ -83,134 +136,122 @@ export default async function DashboardPage({
     ...windowed,
   ];
 
-  return (
-    <>
-      <PageHeader
-        title="Portfolio"
-        description="Everything you hold, valued live — at a glance."
-      >
-        <SnapshotButton variant="outline" label="Snapshot" />
-        <RecomputeButton />
-      </PageHeader>
+  return !hasData ? (
+    <FirstRunEmptyState />
+  ) : (
+    <div className="space-y-6">
+      <ReconciliationBanner view={pnl} />
 
-      {!hasData ? (
-        <FirstRunEmptyState />
-      ) : (
-        <div className="space-y-6">
-          <ReconciliationBanner view={pnl} />
-
-          {/* Hero: portfolio value + MoM */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Portfolio value</CardDescription>
-              <CardTitle className="text-4xl tabular-nums sm:text-5xl">
-                {formatUSD(summary.netWorth)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {summary.momChange ? (
-                <p
-                  className={cn(
-                    "flex items-center gap-1.5 text-sm font-medium",
-                    pnlColor(summary.momChange.absolute),
-                  )}
-                >
-                  {summary.momChange.absolute >= 0 ? (
-                    <ArrowUpRight className="size-4" />
-                  ) : (
-                    <ArrowDownRight className="size-4" />
-                  )}
-                  <span className="tabular-nums">
-                    {formatUSD(summary.momChange.absolute, { signed: true })}
-                  </span>
-                  <span className="tabular-nums">
-                    ({formatRatioPct(summary.momChange.pct, { signed: true })})
-                  </span>
-                  <span className="text-muted-foreground font-normal">
-                    over the past month
-                  </span>
-                </p>
+      {/* Hero: portfolio value + MoM */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardDescription>Portfolio value</CardDescription>
+          <CardTitle className="text-4xl tabular-nums sm:text-5xl">
+            {formatUSD(summary.netWorth)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {summary.momChange ? (
+            <p
+              className={cn(
+                "flex items-center gap-1.5 text-sm font-medium",
+                pnlColor(summary.momChange.absolute),
+              )}
+            >
+              {summary.momChange.absolute >= 0 ? (
+                <ArrowUpRight className="size-4" />
               ) : (
-                <p className="text-muted-foreground text-sm">
-                  Month-over-month change appears once you have a snapshot from
-                  a month ago.
-                </p>
+                <ArrowDownRight className="size-4" />
               )}
-              {summary.hasMissingPrices && (
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Some holdings have no live price yet and are valued at $0.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+              <span className="tabular-nums">
+                {formatUSD(summary.momChange.absolute, { signed: true })}
+              </span>
+              <span className="tabular-nums">
+                ({formatRatioPct(summary.momChange.pct, { signed: true })})
+              </span>
+              <span className="text-muted-foreground font-normal">
+                over the past month
+              </span>
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Month-over-month change appears once you have a snapshot from a
+              month ago.
+            </p>
+          )}
+          {summary.hasMissingPrices && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              Some holdings have no live price yet and are valued at $0.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-          {/* Invested */}
-          <div className="grid gap-4">
-            <StatCard
-              icon={<Coins className="size-4" />}
-              label="Invested"
-              value={formatUSD(summary.holdingsValue)}
+      {/* Invested */}
+      <div className="grid gap-4">
+        <StatCard
+          icon={<Coins className="size-4" />}
+          label="Invested"
+          value={formatUSD(summary.holdingsValue)}
+        />
+      </div>
+
+      {/* P&L by timeframe: Realized / Unrealized / Total with tabs */}
+      {!pnl.empty && <PnlTimeframeCards data={timeframes} />}
+
+      {/* Allocation + Pie */}
+      <div className="grid gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PieIcon className="text-muted-foreground size-4" />
+              Where your money sits
+            </CardTitle>
+            <CardDescription>By asset class</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AllocationPie
+              slices={summary.breakdowns.byAssetClass}
+              href="/portfolios/360f0f48-7d7f-49ab-9e40-98d6e94a07a1"
             />
-          </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* P&L by timeframe: Realized / Unrealized / Total with tabs */}
-          {!pnl.empty && <PnlTimeframeCards data={timeframes} />}
+      {/* Performance: value + P&L over time */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <LineIcon className="text-muted-foreground size-4" />
+            Performance
+          </CardTitle>
+          <CardDescription>
+            Portfolio value and profit/loss over time — pick a range.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!performance.empty ? (
+            <PerformanceChart
+              series={performance.series}
+              range={performance.range}
+              basePath="/dashboard"
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <p className="font-medium">History is just getting started</p>
+              <p className="text-muted-foreground max-w-sm text-sm">
+                Log a trade or sync a wallet and your value line fills in from
+                recorded prices. Take a snapshot to start the record.
+              </p>
+              <SnapshotButton />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-          {/* Allocation + Pie */}
-          <div className="grid gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <PieIcon className="text-muted-foreground size-4" />
-                  Where your money sits
-                </CardTitle>
-                <CardDescription>By asset class</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AllocationPie
-                  slices={summary.breakdowns.byAssetClass}
-                  href="/portfolios/360f0f48-7d7f-49ab-9e40-98d6e94a07a1"
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Performance: value + P&L over time */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <LineIcon className="text-muted-foreground size-4" />
-                Performance
-              </CardTitle>
-              <CardDescription>
-                Portfolio value and profit/loss over time — pick a range.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!performance.empty ? (
-                <PerformanceChart
-                  series={performance.series}
-                  range={performance.range}
-                  basePath="/dashboard"
-                />
-              ) : (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <p className="font-medium">History is just getting started</p>
-                  <p className="text-muted-foreground max-w-sm text-sm">
-                    Log a trade or sync a wallet and your value line fills in
-                    from recorded prices. Take a snapshot to start the record.
-                  </p>
-                  <SnapshotButton />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Holdings: average-cost basis per ticker */}
-          {!pnl.empty && <HoldingsTable view={pnl} />}
-        </div>
-      )}
-    </>
+      {/* Holdings: average-cost basis per ticker */}
+      {!pnl.empty && <HoldingsTable view={pnl} />}
+    </div>
   );
 }
 
@@ -261,12 +302,42 @@ function HoldingsTable({ view }: { view: PnlView }) {
           columns={[
             { key: "ticker", header: "Ticker", sortable: true },
             { key: "shares", header: "Shares", align: "right", sortable: true },
-            { key: "avgCost", header: "Avg cost", align: "right", sortable: true },
-            { key: "costBasis", header: "Cost basis", align: "right", sortable: true },
-            { key: "livePrice", header: "Live price", align: "right", sortable: true },
-            { key: "marketValue", header: "Market value", align: "right", sortable: true },
-            { key: "unrealized", header: "Unrealized", align: "right", sortable: true },
-            { key: "realized", header: "Realized", align: "right", sortable: true },
+            {
+              key: "avgCost",
+              header: "Avg cost",
+              align: "right",
+              sortable: true,
+            },
+            {
+              key: "costBasis",
+              header: "Cost basis",
+              align: "right",
+              sortable: true,
+            },
+            {
+              key: "livePrice",
+              header: "Live price",
+              align: "right",
+              sortable: true,
+            },
+            {
+              key: "marketValue",
+              header: "Market value",
+              align: "right",
+              sortable: true,
+            },
+            {
+              key: "unrealized",
+              header: "Unrealized",
+              align: "right",
+              sortable: true,
+            },
+            {
+              key: "realized",
+              header: "Realized",
+              align: "right",
+              sortable: true,
+            },
             { key: "total", header: "Total", align: "right", sortable: true },
           ]}
           rows={view.holdings.map((h) => ({
@@ -288,7 +359,9 @@ function HoldingsTable({ view }: { view: PnlView }) {
                   <AssetLink symbol={h.ticker} />
                 </span>
               ),
-              shares: <span className="tabular-nums">{formatQty(h.shares)}</span>,
+              shares: (
+                <span className="tabular-nums">{formatQty(h.shares)}</span>
+              ),
               avgCost: (
                 <span className="text-muted-foreground tabular-nums">
                   {h.shares > 0 ? formatUSD(h.avgCost) : "—"}
@@ -390,7 +463,9 @@ function FirstRunEmptyState() {
       <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
         <Wallet className="text-muted-foreground size-10" />
         <div className="space-y-1">
-          <p className="text-lg font-semibold">Let&apos;s build your portfolio</p>
+          <p className="text-lg font-semibold">
+            Let&apos;s build your portfolio
+          </p>
           <p className="text-muted-foreground mx-auto max-w-md text-sm">
             Add holdings or sync a wallet, and this screen comes alive — value,
             allocation, history, and projections.
