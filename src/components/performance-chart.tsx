@@ -78,7 +78,7 @@ export function PerformanceChart({
   const multiYear =
     series.length > 1 &&
     series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4);
-  const data = series.map((p) => ({ ...p, label: axisLabel(p.date, multiYear) }));
+  const data = series;
 
   // Benchmark only overlays on Value ($ what-if) and Return (% rebased) views.
   const hasBench =
@@ -160,7 +160,8 @@ export function PerformanceChart({
                 </linearGradient>
               </defs>
               <XAxis
-                dataKey="label"
+                dataKey="date"
+                tickFormatter={(d) => axisLabel(d, multiYear)}
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
@@ -221,7 +222,8 @@ export function PerformanceChart({
               </defs>
               <CartesianGrid vertical={false} strokeOpacity={0.15} />
               <XAxis
-                dataKey="label"
+                dataKey="date"
+                tickFormatter={(d) => axisLabel(d, multiYear)}
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
@@ -286,7 +288,8 @@ export function PerformanceChart({
               </defs>
               <CartesianGrid vertical={false} strokeOpacity={0.15} />
               <XAxis
-                dataKey="label"
+                dataKey="date"
+                tickFormatter={(d) => axisLabel(d, multiYear)}
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}

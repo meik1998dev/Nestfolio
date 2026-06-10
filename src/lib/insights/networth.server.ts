@@ -12,7 +12,10 @@ import { createClient } from "@/lib/supabase/server";
 import type { Holding, Portfolio } from "@/lib/types";
 import { listHoldings } from "@/lib/ledger/holdings";
 import { getLivePricesForHoldings } from "@/lib/portfolio/prices";
-import { computeHoldingValues } from "@/lib/portfolio/valuation";
+import {
+  computeHoldingValues,
+  excludeDisplaySpam,
+} from "@/lib/portfolio/valuation";
 import {
   buildBreakdowns,
   computeNetWorth,
@@ -34,10 +37,13 @@ export interface NetWorthSummary {
 /** Assemble the full net-worth summary for the signed-in user. */
 export async function getNetWorthSummary(): Promise<NetWorthSummary> {
   const supabase = await createClient();
-  const [holdings, portfolios] = await Promise.all([
+  const [allHoldings, portfolios] = await Promise.all([
     listHoldings(),
     listPortfolios(supabase),
   ]);
+  // Hide unpriceable airdrop spam from net worth, breakdowns and the
+  // missing-prices warning (it'd always value $0 and skew nothing but clutter).
+  const holdings = excludeDisplaySpam(allHoldings);
   // Warm + read live prices for every held ticker (manual + wallet).
   const prices = await getLivePricesForHoldings(holdings);
 

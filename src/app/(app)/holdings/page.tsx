@@ -14,7 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty } from "@/lib/format";
 import { listHoldings, deleteHolding } from "@/lib/ledger/holdings";
 import { getLivePricesForHoldings } from "@/lib/portfolio/prices";
-import { computeHoldingValues } from "@/lib/portfolio/valuation";
+import {
+  computeHoldingValues,
+  excludeDisplaySpam,
+} from "@/lib/portfolio/valuation";
 import { HoldingForm } from "./holding-form";
 import { DeleteButton } from "@/components/delete-button";
 import { AssetLink } from "@/components/asset-link";
@@ -52,7 +55,8 @@ export default function HoldingsPage() {
 
 /** Streamed body: all slow data + the positions Card live here. */
 async function HoldingsContent() {
-  const holdings = await listHoldings();
+  // Hide unpriceable airdrop spam from the positions list (ledger row stays).
+  const holdings = excludeDisplaySpam(await listHoldings());
   // Live USD value per holding (manual + wallet), priced from the API.
   const prices = await getLivePricesForHoldings(holdings);
   const holdingValues = computeHoldingValues(holdings, prices);

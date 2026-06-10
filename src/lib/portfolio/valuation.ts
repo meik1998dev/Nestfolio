@@ -66,3 +66,26 @@ export function hasPrice(
 ): boolean {
   return unitPrice(holding.asset, prices) != null;
 }
+
+/**
+ * "Display spam": a holding whose symbol resolves to no known asset (kind
+ * "unknown") — an airdropped token we can't price. These always value to $0 and
+ * only clutter allocation/holdings views, so display surfaces hide them.
+ *
+ * This NEVER drops a real position: every asset the user has actually traded
+ * resolves to a ticker (stocks → `…on`, crypto → a pair, gold → PAXG/XAU), so
+ * realized P&L is untouched. We also never delete the ledger row — purely a
+ * display filter.
+ */
+export function isDisplaySpam(asset: string): boolean {
+  // Plain gold tickers (XAU/GOLD) read as "unknown" to the token resolver but
+  // are real assets priced as gold elsewhere — never treat them as spam.
+  const sym = asset.toUpperCase();
+  if (sym === "XAU" || sym === "GOLD") return false;
+  return resolveToken(asset).kind === "unknown";
+}
+
+/** Drop unpriceable spam holdings from a list, for display surfaces only. */
+export function excludeDisplaySpam(holdings: Holding[]): Holding[] {
+  return holdings.filter((h) => !isDisplaySpam(h.asset));
+}

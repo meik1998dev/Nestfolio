@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { Holding } from "@/lib/types";
-import { tickerForAsset, computeHoldingValues, hasPrice } from "./valuation";
+import {
+  tickerForAsset,
+  computeHoldingValues,
+  hasPrice,
+  isDisplaySpam,
+  excludeDisplaySpam,
+} from "./valuation";
 
 function hold(asset: string, amount: number, id = asset): Holding {
   return {
@@ -64,5 +70,31 @@ describe("hasPrice", () => {
   });
   it("is false when neither derived nor raw symbol is priced", () => {
     expect(hasPrice(hold("DOGE", 1), prices)).toBe(false);
+  });
+});
+
+describe("isDisplaySpam", () => {
+  it("flags unresolvable airdrop tokens as spam", () => {
+    expect(isDisplaySpam("世界杯")).toBe(true);
+    expect(isDisplaySpam("币安人生%202.0")).toBe(true);
+    expect(isDisplaySpam("Apple")).toBe(true); // not AAPLon → unresolvable
+  });
+  it("never flags an asset the user has actually traded", () => {
+    // Every real position resolves: gold, crypto, stablecoins, tokenized stocks.
+    for (const a of ["PAXG", "XAU", "BTC", "BNB", "USDT", "NVDAon", "AAPLon"]) {
+      expect(isDisplaySpam(a)).toBe(false);
+    }
+  });
+});
+
+describe("excludeDisplaySpam", () => {
+  it("drops only spam, preserving real holdings (and their P&L)", () => {
+    const kept = excludeDisplaySpam([
+      hold("PAXG", 5),
+      hold("世界杯", 2000),
+      hold("NVDAon", 1),
+      hold("宝贝狗", 2000),
+    ]);
+    expect(kept.map((h) => h.asset)).toEqual(["PAXG", "NVDAon"]);
   });
 });

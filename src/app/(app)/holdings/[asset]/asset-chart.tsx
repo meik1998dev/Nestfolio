@@ -77,7 +77,7 @@ export function AssetChart({
   const multiYear =
     series.length > 1 &&
     series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4);
-  const data = series.map((p) => ({ ...p, label: axisLabel(p.date, multiYear) }));
+  const data = series;
 
   // P&L view: drop the flat run before the first activity (no holdings and no
   // realized/total P&L yet) so the chart starts where the investment does.
@@ -171,7 +171,8 @@ export function AssetChart({
                 </linearGradient>
               </defs>
               <XAxis
-                dataKey="label"
+                dataKey="date"
+                tickFormatter={(d) => axisLabel(d, multiYear)}
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
@@ -218,7 +219,8 @@ export function AssetChart({
               </defs>
               <CartesianGrid vertical={false} strokeOpacity={0.15} />
               <XAxis
-                dataKey="label"
+                dataKey="date"
+                tickFormatter={(d) => axisLabel(d, multiYear)}
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}

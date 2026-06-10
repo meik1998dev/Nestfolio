@@ -27,7 +27,11 @@ import { cn } from "@/lib/utils";
 import { listPortfolios, deletePortfolio } from "@/lib/portfolio/portfolios";
 import { listHoldings } from "@/lib/ledger/holdings";
 import { getLivePricesForHoldings } from "@/lib/portfolio/prices";
-import { computeHoldingValues, hasPrice } from "@/lib/portfolio/valuation";
+import {
+  computeHoldingValues,
+  excludeDisplaySpam,
+  hasPrice,
+} from "@/lib/portfolio/valuation";
 import {
   buildPortfolioTree,
   rollupValues,
@@ -98,10 +102,12 @@ function PortfoliosSkeleton() {
 
 /** All portfolio data fetching + the data-driven Cards. Streamed behind Suspense. */
 async function PortfoliosContent() {
-  const [portfolios, holdings] = await Promise.all([
+  const [portfolios, allHoldings] = await Promise.all([
     listPortfolios(),
     listHoldings(),
   ]);
+  // Hide unpriceable airdrop spam from the tree/allocation (ledger row stays).
+  const holdings = excludeDisplaySpam(allHoldings);
   const prices = await getLivePricesForHoldings(holdings);
 
   const holdingValues = computeHoldingValues(holdings, prices);

@@ -21,7 +21,10 @@ import { resolveToken } from "@/lib/price/ticker";
 import { listHoldings } from "@/lib/ledger/holdings";
 import { listPortfolios } from "@/lib/portfolio/portfolios";
 import { getLivePricesForHoldings } from "@/lib/portfolio/prices";
-import { computeHoldingValues } from "@/lib/portfolio/valuation";
+import {
+  computeHoldingValues,
+  excludeDisplaySpam,
+} from "@/lib/portfolio/valuation";
 import {
   buildPortfolioTree,
   rollupValues,
@@ -136,10 +139,12 @@ export const getPortfolioDetail = cache(
     } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
 
-    const [portfolios, holdings] = await Promise.all([
+    const [portfolios, allHoldings] = await Promise.all([
       listPortfolios(),
       listHoldings(),
     ]);
+    // Hide unpriceable airdrop spam from the tree/holdings (ledger row stays).
+    const holdings = excludeDisplaySpam(allHoldings);
 
     const roots = buildPortfolioTree(portfolios, holdings);
     const node = findNode(roots, id);
