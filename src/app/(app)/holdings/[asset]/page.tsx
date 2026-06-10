@@ -39,6 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatUSD, formatQty, formatDate, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getAssetDetail, parseRange } from "@/lib/asset/detail";
+import type { AssetTrade } from "@/lib/asset/types";
 import { getNetWorthSummary } from "@/lib/insights/networth.server";
 import { getTimeframePnl } from "@/lib/insights/performance";
 import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
@@ -72,6 +73,48 @@ function directionColor(type: string): string {
   if (type === "sell" || type === "send")
     return "text-red-600 dark:text-red-500";
   return "";
+}
+
+/**
+ * Collapse the asset's already-fetched trade ledger into chart markers: one per
+ * (date, side) bucket, with quantities summed. Only buy/sell legs become markers
+ * (1-leg wallet moves like delivery/send aren't trades). Reuses `detail.transactions`
+ * — no extra DB reads. `qty` is omitted unless every leg in the bucket had a known
+ * amount; `price` is the quantity-weighted average when prices are known.
+ */
+function deriveTrades(
+  transactions: {
+    date: string;
+    type: string;
+    amount: number;
+    price: number | null;
+  }[],
+): AssetTrade[] {
+  const buckets = new Map<
+    string,
+    { qty: number; cost: number; pricedQty: number }
+  >();
+  for (const tx of transactions) {
+    const side = tx.type === "buy" ? "buy" : tx.type === "sell" ? "sell" : null;
+    if (!side) continue;
+    const key = `${tx.date.slice(0, 10)}|${side}`;
+    const b = buckets.get(key) ?? { qty: 0, cost: 0, pricedQty: 0 };
+    b.qty += tx.amount;
+    if (tx.price != null) {
+      b.cost += tx.price * tx.amount;
+      b.pricedQty += tx.amount;
+    }
+    buckets.set(key, b);
+  }
+  return [...buckets.entries()].map(([key, b]) => {
+    const [date, side] = key.split("|") as [string, "buy" | "sell"];
+    return {
+      date,
+      side,
+      qty: b.qty > 0 ? b.qty : undefined,
+      price: b.pricedQty > 0 ? b.cost / b.pricedQty : undefined,
+    };
+  });
 }
 
 /** "—" for null P&L (no live price), else a signed USD figure. */
@@ -170,6 +213,10 @@ async function AssetContent({
         ...windowed,
       ]
     : [];
+
+  // Buy/sell markers for the Price-view chart, derived from the already-loaded
+  // ledger (no extra DB reads). Empty when the asset has no buy/sell trades.
+  const trades = deriveTrades(detail.transactions);
 
   const heldLabel =
     detail.amountHeld > 0
@@ -287,6 +334,7 @@ async function AssetContent({
               hasPrice={detail.hasPrice}
               pnlKnown={detail.pnlKnown}
               rangeChanges={detail.rangeChanges}
+              trades={trades}
             />
           </CardContent>
         </Card>

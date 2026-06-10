@@ -13,6 +13,18 @@ export function parseRange(raw: string | undefined): AssetRange {
   return ASSET_RANGES.includes(raw as AssetRange) ? (raw as AssetRange) : "1Y";
 }
 
+/**
+ * A single charted trade marker: the user's own buy/sell on this asset, keyed by
+ * day. Same-day same-side trades are aggregated into one marker server-side, so
+ * `qty` is the summed quantity (omitted when no leg had a known amount).
+ */
+export interface AssetTrade {
+  date: string; // YYYY-MM-DD
+  side: "buy" | "sell";
+  qty?: number;
+  price?: number;
+}
+
 /** One point on the price + P&L time series. P&L fields are null with no price. */
 export interface AssetSeriesPoint {
   date: string; // YYYY-MM-DD

@@ -21,10 +21,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatUSD, formatQty } from "@/lib/format";
-import type { AssetRange, AssetSeriesPoint } from "@/lib/asset/types";
+import type {
+  AssetRange,
+  AssetSeriesPoint,
+  AssetTrade,
+} from "@/lib/asset/types";
 import { ASSET_RANGES } from "@/lib/asset/types";
 
 type View = "price" | "pnl";
+
+/** All trades that fall on one charted date, split by side. */
+interface DayTrades {
+  buy?: AssetTrade;
+  sell?: AssetTrade;
+}
 
 /** Axis tick label. Includes the year (e.g. "Jan '24") on multi-year ranges. */
 function axisLabel(iso: string, withYear: boolean): string {
@@ -142,6 +152,7 @@ export function AssetChart({
   hasPrice,
   pnlKnown,
   rangeChanges,
+  trades = [],
 }: {
   /** Original-cased URL symbol used for range links (preserves casing so
    *  tokenized stocks like "NVDAon" keep resolving). */
@@ -151,6 +162,8 @@ export function AssetChart({
   hasPrice: boolean;
   pnlKnown: boolean;
   rangeChanges: Record<AssetRange, number | null>;
+  /** The user's own buy/sell trades on this asset, for Price-view markers. */
+  trades?: AssetTrade[];
 }) {
   const [view, setView] = useState<View>("price");
   // Index of the hovered point (scrub header); null → show the latest point.
@@ -194,6 +207,19 @@ export function AssetChart({
     () => zeroSplitOffset(pnlData.map((p) => p.total)),
     [pnlData],
   );
+
+  // Fast date → trades lookup so the Price-view dot render-prop and tooltip can
+  // resolve a point's trades in O(1) instead of scanning the trades array per
+  // point. Keyed on the ISO day; buy/sell collapse into one bucket per date.
+  const tradesByDate = useMemo(() => {
+    const map = new Map<string, DayTrades>();
+    for (const t of trades) {
+      const day = map.get(t.date) ?? {};
+      day[t.side] = t;
+      map.set(t.date, day);
+    }
+    return map;
+  }, [trades]);
 
   // Calendar-boundary x ticks per view. Price charts `data`; P&L charts the
   // sliced `pnlData`. `pnlData` has unstable identity (a fresh slice each
@@ -338,17 +364,33 @@ export function AssetChart({
                 domain={["auto", "auto"]}
               />
               <Tooltip
-                content={({ active, payload }) =>
-                  active && payload?.length ? (
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const day = tradesByDate.get(payload[0].payload.date);
+                  return (
                     <TooltipBox label={fullDate(payload[0].payload.date)}>
                       <Row name="Price" value={fmtMoney(payload[0].value)} />
                       <Row
                         name="Held"
                         value={fmtQty(payload[0].payload.held)}
                       />
+                      {day?.buy && (
+                        <Row
+                          name="Bought"
+                          value={tradeQty(day.buy)}
+                          valueClass="text-emerald-600 dark:text-emerald-500"
+                        />
+                      )}
+                      {day?.sell && (
+                        <Row
+                          name="Sold"
+                          value={tradeQty(day.sell)}
+                          valueClass="text-red-600 dark:text-red-500"
+                        />
+                      )}
                     </TooltipBox>
-                  ) : null
-                }
+                  );
+                }}
               />
               <Area
                 type="monotone"
@@ -357,7 +399,14 @@ export function AssetChart({
                 strokeWidth={2}
                 fill="url(#assetPriceFill)"
                 connectNulls
-                dot={false}
+                dot={(props) => (
+                  <TradeDot
+                    key={props.index}
+                    cx={props.cx}
+                    cy={props.cy}
+                    day={tradesByDate.get(props.payload?.date)}
+                  />
+                )}
                 isAnimationActive={false}
               />
             </AreaChart>
@@ -642,12 +691,56 @@ function TooltipBox({
   );
 }
 
-function Row({ name, value }: { name: string; value: string }) {
+function Row({
+  name,
+  value,
+  valueClass,
+}: {
+  name: string;
+  value: string;
+  valueClass?: string;
+}) {
   return (
     <p className="flex items-center justify-between gap-4 tabular-nums">
       <span className="text-muted-foreground">{name}</span>
-      <span>{value}</span>
+      <span className={valueClass}>{value}</span>
     </p>
+  );
+}
+
+/** Tooltip value for a trade: the quantity when known, else a bare side label. */
+function tradeQty(t: AssetTrade): string {
+  return t.qty != null ? formatQty(t.qty) : t.side === "buy" ? "Buy" : "Sell";
+}
+
+/**
+ * A trade marker on the Price line: an emerald (buy) / red (sell) dot with a
+ * background-colored ring so it reads against the line. Renders nothing on dates
+ * with no trade (the dot render-prop runs for every point). When a date has both
+ * a buy and a sell, the buy wins the dot — both still show in the tooltip.
+ */
+function TradeDot({
+  cx,
+  cy,
+  day,
+}: {
+  cx?: number;
+  cy?: number;
+  day: DayTrades | undefined;
+}) {
+  const trade = day?.buy ?? day?.sell;
+  if (!trade || cx == null || cy == null) return null;
+  const color =
+    trade.side === "buy" ? "var(--color-emerald-600)" : "var(--color-red-600)";
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4}
+      fill={color}
+      stroke="var(--color-background)"
+      strokeWidth={1.5}
+    />
   );
 }
 
