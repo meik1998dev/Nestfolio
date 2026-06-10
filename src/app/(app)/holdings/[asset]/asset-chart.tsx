@@ -51,8 +51,10 @@ function fullDate(iso: string): string {
   });
 }
 
-/** recharts v3 reports the hovered index as number | string | undefined. */
+/** recharts v3 reports the hovered index as number | string | null |
+ *  undefined; null when the pointer is outside the plot area. */
 function toIndex(v: unknown): number | null {
+  if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
