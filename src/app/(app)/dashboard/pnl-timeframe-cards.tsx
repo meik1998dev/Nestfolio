@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatUSD, pnlColor } from "@/lib/format";
+import { formatUSD, formatRatioPct, pnlColor } from "@/lib/format";
 import {
   PNL_TIMEFRAMES,
   TIMEFRAME_LABELS,
@@ -23,13 +23,22 @@ import {
   type TimeframePnl,
 } from "@/lib/pnl/timeframe.types";
 
-export function PnlTimeframeCards({ data }: { data: TimeframePnl[] }) {
+export function PnlTimeframeCards({
+  data,
+  investedCapital,
+}: {
+  data: TimeframePnl[];
+  /** Net cost basis — the denominator for Return %. */
+  investedCapital: number;
+}) {
   const [selected, setSelected] = useState<PnlTimeframe>("all");
   const byTf = new Map(data.map((d) => [d.timeframe, d]));
   const current = byTf.get(selected) ?? byTf.get("all") ?? null;
   if (!current) return null;
 
   const period = selected !== "all";
+  const returnPct =
+    investedCapital > 1e-6 ? current.total / investedCapital : null;
 
   return (
     <div className="mb-6 space-y-4">
@@ -51,7 +60,21 @@ export function PnlTimeframeCards({ data }: { data: TimeframePnl[] }) {
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label={period ? "Return (period)" : "Return"}
+          value={returnPct ?? 0}
+          displayValue={
+            returnPct != null
+              ? formatRatioPct(returnPct, { signed: true })
+              : "—"
+          }
+          hint={
+            period
+              ? "Period P&L over invested capital."
+              : "Total P&L over invested capital."
+          }
+        />
         <MetricCard
           label="Realized PnL"
           value={current.realized}
@@ -86,11 +109,14 @@ export function PnlTimeframeCards({ data }: { data: TimeframePnl[] }) {
 function MetricCard({
   label,
   value,
+  displayValue,
   hint,
   emphasize,
 }: {
   label: string;
   value: number;
+  /** Overrides the formatted USD value (e.g. a percentage). */
+  displayValue?: string;
   hint: string;
   emphasize?: boolean;
 }) {
@@ -101,7 +127,7 @@ function MetricCard({
         <CardTitle
           className={`tabular-nums ${emphasize ? "text-3xl" : "text-2xl"} ${pnlColor(value)}`}
         >
-          {formatUSD(value, { signed: true })}
+          {displayValue ?? formatUSD(value, { signed: true })}
         </CardTitle>
       </CardHeader>
       <CardContent>

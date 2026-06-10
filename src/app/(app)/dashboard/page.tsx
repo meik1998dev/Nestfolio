@@ -199,7 +199,12 @@ async function DashboardBody({
       </div>
 
       {/* P&L by timeframe: Realized / Unrealized / Total with tabs */}
-      {!pnl.empty && <PnlTimeframeCards data={timeframes} />}
+      {!pnl.empty && (
+        <PnlTimeframeCards
+          data={timeframes}
+          investedCapital={pnl.rollup.costBasis}
+        />
+      )}
 
       {/* Allocation + Pie */}
       <div className="grid gap-4">
