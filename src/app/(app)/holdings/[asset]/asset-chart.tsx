@@ -51,6 +51,12 @@ function fullDate(iso: string): string {
   });
 }
 
+/** recharts v3 reports the hovered index as number | string | undefined. */
+function toIndex(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function AssetChart({
   linkSymbol,
   series,
@@ -69,6 +75,13 @@ export function AssetChart({
   rangeChanges: Record<AssetRange, number | null>;
 }) {
   const [view, setView] = useState<View>("price");
+  // Index of the hovered point (scrub header); null → show the latest point.
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  const selectView = (v: View) => {
+    setView(v);
+    setHoverIdx(null); // index maps into the active series — reset on switch
+  };
 
   // Only show per-range % when at least one range is priceable.
   const hasPct = ASSET_RANGES.some((r) => rangeChanges[r] != null);
@@ -82,7 +95,8 @@ export function AssetChart({
   // P&L view: drop the flat run before the first activity (no holdings and no
   // realized/total P&L yet) so the chart starts where the investment does.
   const firstActivity = data.findIndex(
-    (p) => (p.held ?? 0) !== 0 || (p.realized ?? 0) !== 0 || (p.total ?? 0) !== 0,
+    (p) =>
+      (p.held ?? 0) !== 0 || (p.realized ?? 0) !== 0 || (p.total ?? 0) !== 0,
   );
   const pnlData = firstActivity > 0 ? data.slice(firstActivity) : data;
 
@@ -96,15 +110,41 @@ export function AssetChart({
     ? "var(--color-emerald-600)"
     : "var(--color-red-600)";
 
+  // Scrub header: hovered point (or latest when not hovering) + delta vs the
+  // first point of the visible series. The P&L view charts `pnlData`, so both
+  // the index lookup and the delta baseline use that sliced series.
+  const chartData = view === "pnl" ? pnlData : data;
+  const chartVisible =
+    data.length > 0 && !(view === "pnl" && !pnlKnown) && chartData.length > 0;
+  const point = chartVisible
+    ? chartData[
+        hoverIdx != null && hoverIdx < chartData.length
+          ? hoverIdx
+          : chartData.length - 1
+      ]
+    : null;
+  const startPoint = chartVisible ? chartData[0] : null;
+  const hoverProps = {
+    onMouseMove: (s: { activeIndex?: unknown }) =>
+      setHoverIdx(toIndex(s.activeIndex)),
+    onMouseLeave: () => setHoverIdx(null),
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* Price | P&L toggle */}
         <div className="bg-muted inline-flex rounded-lg p-0.5">
-          <ToggleButton active={view === "price"} onClick={() => setView("price")}>
+          <ToggleButton
+            active={view === "price"}
+            onClick={() => selectView("price")}
+          >
             Price
           </ToggleButton>
-          <ToggleButton active={view === "pnl"} onClick={() => setView("pnl")}>
+          <ToggleButton
+            active={view === "pnl"}
+            onClick={() => selectView("pnl")}
+          >
             P&amp;L
           </ToggleButton>
         </div>
@@ -147,6 +187,14 @@ export function AssetChart({
         </div>
       </div>
 
+      {point && startPoint && (
+        <ScrubHeader
+          {...scrubParts(view, point, startPoint)}
+          pointDate={fullDate(point.date)}
+          startDate={fullDate(startPoint.date)}
+        />
+      )}
+
       {data.length === 0 ? (
         <div className="text-muted-foreground flex h-[260px] items-center justify-center text-sm">
           No price history for this range.
@@ -163,7 +211,11 @@ export function AssetChart({
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           {view === "price" ? (
-            <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+            <AreaChart
+              data={data}
+              margin={{ left: 4, right: 8, top: 8 }}
+              {...hoverProps}
+            >
               <defs>
                 <linearGradient id="assetPriceFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={trendColor} stopOpacity={0.35} />
@@ -207,10 +259,15 @@ export function AssetChart({
                 fill="url(#assetPriceFill)"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
             </AreaChart>
           ) : (
-            <AreaChart data={pnlData} margin={{ left: 4, right: 8, top: 8 }}>
+            <AreaChart
+              data={pnlData}
+              margin={{ left: 4, right: 8, top: 8 }}
+              {...hoverProps}
+            >
               <defs>
                 <linearGradient id="assetPnlFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={trendColor} stopOpacity={0.3} />
@@ -248,7 +305,10 @@ export function AssetChart({
                 content={({ active, payload }) =>
                   active && payload?.length ? (
                     <TooltipBox label={fullDate(payload[0].payload.date)}>
-                      <Row name="Total" value={fmtSigned(payload[0].payload.total)} />
+                      <Row
+                        name="Total"
+                        value={fmtSigned(payload[0].payload.total)}
+                      />
                       <Row
                         name="Realized"
                         value={fmtSigned(payload[0].payload.realized)}
@@ -257,7 +317,10 @@ export function AssetChart({
                         name="Unrealized"
                         value={fmtSigned(payload[0].payload.unrealized)}
                       />
-                      <Row name="Held" value={fmtQty(payload[0].payload.held)} />
+                      <Row
+                        name="Held"
+                        value={fmtQty(payload[0].payload.held)}
+                      />
                     </TooltipBox>
                   ) : null
                 }
@@ -272,6 +335,7 @@ export function AssetChart({
                 fill="url(#assetPnlFill)"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
               <Line
                 yAxisId="qty"
@@ -281,6 +345,7 @@ export function AssetChart({
                 stroke="var(--color-violet-500)"
                 strokeWidth={2}
                 dot={false}
+                isAnimationActive={false}
               />
               <Line
                 yAxisId="usd"
@@ -290,6 +355,7 @@ export function AssetChart({
                 stroke="var(--color-amber-500)"
                 strokeWidth={1.5}
                 dot={false}
+                isAnimationActive={false}
               />
               <Line
                 yAxisId="usd"
@@ -301,6 +367,7 @@ export function AssetChart({
                 strokeDasharray="4 3"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
             </AreaChart>
           )}
@@ -330,6 +397,69 @@ function fmtPct(v: number | null): string {
   return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
 }
 
+/**
+ * Scrub-header content for one view: the big number at `point` plus the change
+ * since `start` (first point of the visible series). The % part of the delta is
+ * "—" when the baseline is 0 or null; for a (possibly negative) P&L baseline
+ * the denominator is |start| so the delta sign stays meaningful.
+ */
+function scrubParts(
+  view: View,
+  point: AssetSeriesPoint,
+  start: AssetSeriesPoint,
+): { primary: string; delta: string | null; deltaUp: boolean } {
+  const cur = view === "pnl" ? point.total : point.price;
+  const base = view === "pnl" ? start.total : start.price;
+  const d = cur != null && base != null ? cur - base : null;
+  const pct = d != null && base ? (d / Math.abs(base)) * 100 : null;
+  return {
+    primary: view === "pnl" ? fmtSigned(cur) : fmtMoney(cur),
+    delta: d == null ? null : `${fmtSigned(d)} (${fmtPct(pct)})`,
+    deltaUp: (d ?? 0) >= 0,
+  };
+}
+
+/** Big hovered/latest number + delta since range start. Fixed-ish height and
+ *  tabular digits so scrubbing never shifts the layout. */
+function ScrubHeader({
+  primary,
+  delta,
+  deltaUp,
+  pointDate,
+  startDate,
+}: {
+  primary: string;
+  delta: string | null;
+  deltaUp: boolean;
+  pointDate: string;
+  startDate: string;
+}) {
+  return (
+    <div className="min-h-14 space-y-0.5">
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+          {primary}
+        </span>
+        <span className="text-muted-foreground text-xs">{pointDate}</span>
+      </div>
+      <p className="text-sm tabular-nums">
+        <span
+          className={cn(
+            delta == null
+              ? "text-muted-foreground"
+              : deltaUp
+                ? "text-emerald-600 dark:text-emerald-500"
+                : "text-red-600 dark:text-red-500",
+          )}
+        >
+          {delta ?? "—"}
+        </span>{" "}
+        <span className="text-muted-foreground">since {startDate}</span>
+      </p>
+    </div>
+  );
+}
+
 /** Asset quantity held. */
 function fmtQty(v: unknown): string {
   return v == null || !Number.isFinite(Number(v)) ? "—" : formatQty(Number(v));
@@ -337,9 +467,7 @@ function fmtQty(v: unknown): string {
 
 /** Plain USD (prices) — never signed. */
 function fmtMoney(v: unknown): string {
-  return v == null || !Number.isFinite(Number(v))
-    ? "—"
-    : formatUSD(Number(v));
+  return v == null || !Number.isFinite(Number(v)) ? "—" : formatUSD(Number(v));
 }
 
 /** Signed USD (P&L) — leading +/− so gains and losses read at a glance. */

@@ -62,6 +62,12 @@ function fullDate(iso: string): string {
   });
 }
 
+/** recharts v3 reports the hovered index as number | string | undefined. */
+function toIndex(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function PerformanceChart({
   series,
   range,
@@ -74,6 +80,13 @@ export function PerformanceChart({
 }) {
   const [view, setView] = useState<View>("value");
   const [benchmark, setBenchmark] = useState(true);
+  // Index of the hovered point (scrub header); null → show the latest point.
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  const selectView = (v: View) => {
+    setView(v);
+    setHoverIdx(null);
+  };
 
   const multiYear =
     series.length > 1 &&
@@ -81,8 +94,9 @@ export function PerformanceChart({
   const data = series;
 
   // Benchmark only overlays on Value ($ what-if) and Return (% rebased) views.
-  const hasBench =
-    data.some((p) => p.spyValue != null || p.spyReturnPct != null);
+  const hasBench = data.some(
+    (p) => p.spyValue != null || p.spyReturnPct != null,
+  );
   const showBench = benchmark && hasBench && view !== "pnl";
 
   const lastTotal = data.length ? data[data.length - 1].total : null;
@@ -98,20 +112,41 @@ export function PerformanceChart({
     ? "var(--color-emerald-600)"
     : "var(--color-red-600)";
 
+  // Scrub header: hovered point (or latest when not hovering) + delta vs the
+  // first point of the visible range.
+  const point =
+    hoverIdx != null && hoverIdx < data.length
+      ? data[hoverIdx]
+      : data.length
+        ? data[data.length - 1]
+        : null;
+  const startPoint = data.length ? data[0] : null;
+  const hoverProps = {
+    onMouseMove: (s: { activeIndex?: unknown }) =>
+      setHoverIdx(toIndex(s.activeIndex)),
+    onMouseLeave: () => setHoverIdx(null),
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* Value | P&L | Return % toggle */}
         <div className="bg-muted inline-flex rounded-lg p-0.5">
-          <ToggleButton active={view === "value"} onClick={() => setView("value")}>
+          <ToggleButton
+            active={view === "value"}
+            onClick={() => selectView("value")}
+          >
             Value
           </ToggleButton>
-          <ToggleButton active={view === "pnl"} onClick={() => setView("pnl")}>
+          <ToggleButton
+            active={view === "pnl"}
+            onClick={() => selectView("pnl")}
+          >
             P&amp;L
           </ToggleButton>
           <ToggleButton
             active={view === "return"}
-            onClick={() => setView("return")}
+            onClick={() => selectView("return")}
           >
             Return %
           </ToggleButton>
@@ -145,6 +180,14 @@ export function PerformanceChart({
         </div>
       </div>
 
+      {point && startPoint && (
+        <ScrubHeader
+          {...scrubParts(view, point, startPoint)}
+          pointDate={fullDate(point.date)}
+          startDate={fullDate(startPoint.date)}
+        />
+      )}
+
       {data.length === 0 ? (
         <div className="text-muted-foreground flex h-[260px] items-center justify-center text-sm">
           No history for this range yet.
@@ -152,7 +195,11 @@ export function PerformanceChart({
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           {view === "value" ? (
-            <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+            <AreaChart
+              data={data}
+              margin={{ left: 4, right: 8, top: 8 }}
+              {...hoverProps}
+            >
               <defs>
                 <linearGradient id="perfValueFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={trendColor} stopOpacity={0.35} />
@@ -179,7 +226,10 @@ export function PerformanceChart({
                 content={({ active, payload }) =>
                   active && payload?.length ? (
                     <TooltipBox label={fullDate(payload[0].payload.date)}>
-                      <Row name="Value" value={fmtMoney(payload[0].payload.value)} />
+                      <Row
+                        name="Value"
+                        value={fmtMoney(payload[0].payload.value)}
+                      />
                       {showBench && (
                         <Row
                           name="S&P 500 (what-if)"
@@ -198,6 +248,7 @@ export function PerformanceChart({
                 fill="url(#perfValueFill)"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
               {showBench && (
                 <Line
@@ -209,11 +260,16 @@ export function PerformanceChart({
                   strokeDasharray="4 3"
                   connectNulls
                   dot={false}
+                  isAnimationActive={false}
                 />
               )}
             </AreaChart>
           ) : view === "return" ? (
-            <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+            <AreaChart
+              data={data}
+              margin={{ left: 4, right: 8, top: 8 }}
+              {...hoverProps}
+            >
               <defs>
                 <linearGradient id="perfReturnFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={trendColor} stopOpacity={0.3} />
@@ -264,6 +320,7 @@ export function PerformanceChart({
                 fill="url(#perfReturnFill)"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
               {showBench && (
                 <Line
@@ -275,11 +332,16 @@ export function PerformanceChart({
                   strokeDasharray="4 3"
                   connectNulls
                   dot={false}
+                  isAnimationActive={false}
                 />
               )}
             </AreaChart>
           ) : (
-            <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+            <AreaChart
+              data={data}
+              margin={{ left: 4, right: 8, top: 8 }}
+              {...hoverProps}
+            >
               <defs>
                 <linearGradient id="perfPnlFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={trendColor} stopOpacity={0.3} />
@@ -307,7 +369,10 @@ export function PerformanceChart({
                 content={({ active, payload }) =>
                   active && payload?.length ? (
                     <TooltipBox label={fullDate(payload[0].payload.date)}>
-                      <Row name="Total" value={fmtSigned(payload[0].payload.total)} />
+                      <Row
+                        name="Total"
+                        value={fmtSigned(payload[0].payload.total)}
+                      />
                       <Row
                         name="Realized"
                         value={fmtSigned(payload[0].payload.realized)}
@@ -329,6 +394,7 @@ export function PerformanceChart({
                 fill="url(#perfPnlFill)"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
               <Line
                 type="monotone"
@@ -337,6 +403,7 @@ export function PerformanceChart({
                 stroke="var(--color-amber-500)"
                 strokeWidth={1.5}
                 dot={false}
+                isAnimationActive={false}
               />
               <Line
                 type="monotone"
@@ -347,6 +414,7 @@ export function PerformanceChart({
                 strokeDasharray="4 3"
                 connectNulls
                 dot={false}
+                isAnimationActive={false}
               />
             </AreaChart>
           )}
@@ -369,6 +437,82 @@ export function PerformanceChart({
           <Legend color={SPY_COLOR} label="S&P 500" dashed />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Scrub-header content for one view: the big number at `point` plus the change
+ * since `start` (first point of the visible range). The % part of the delta is
+ * "—" when the baseline is 0 or null; for a (possibly negative) P&L baseline
+ * the denominator is |start| so the delta sign stays meaningful.
+ */
+function scrubParts(
+  view: View,
+  point: PerfPoint,
+  start: PerfPoint,
+): { primary: string; delta: string | null; deltaUp: boolean } {
+  if (view === "return") {
+    // Primary is already a % — the delta is just percentage points gained.
+    const d =
+      point.returnPct != null && start.returnPct != null
+        ? point.returnPct - start.returnPct
+        : null;
+    return {
+      primary: fmtPct(point.returnPct),
+      delta:
+        d == null ? null : `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)} pp`,
+      deltaUp: (d ?? 0) >= 0,
+    };
+  }
+  const cur = view === "pnl" ? point.total : point.value;
+  const base = view === "pnl" ? start.total : start.value;
+  const d = cur != null && base != null ? cur - base : null;
+  const pct = d != null && base ? d / Math.abs(base) : null;
+  return {
+    primary: view === "pnl" ? fmtSigned(cur) : fmtMoney(cur),
+    delta: d == null ? null : `${fmtSigned(d)} (${fmtPct(pct)})`,
+    deltaUp: (d ?? 0) >= 0,
+  };
+}
+
+/** Big hovered/latest number + delta since range start. Fixed-ish height and
+ *  tabular digits so scrubbing never shifts the layout. */
+function ScrubHeader({
+  primary,
+  delta,
+  deltaUp,
+  pointDate,
+  startDate,
+}: {
+  primary: string;
+  delta: string | null;
+  deltaUp: boolean;
+  pointDate: string;
+  startDate: string;
+}) {
+  return (
+    <div className="min-h-14 space-y-0.5">
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+          {primary}
+        </span>
+        <span className="text-muted-foreground text-xs">{pointDate}</span>
+      </div>
+      <p className="text-sm tabular-nums">
+        <span
+          className={cn(
+            delta == null
+              ? "text-muted-foreground"
+              : deltaUp
+                ? "text-emerald-600 dark:text-emerald-500"
+                : "text-red-600 dark:text-red-500",
+          )}
+        >
+          {delta ?? "—"}
+        </span>{" "}
+        <span className="text-muted-foreground">since {startDate}</span>
+      </p>
     </div>
   );
 }
