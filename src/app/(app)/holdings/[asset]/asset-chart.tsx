@@ -51,6 +51,61 @@ function fullDate(iso: string): string {
   });
 }
 
+/** Most ticks an axis should show before we thin to avoid overlap. */
+const MAX_TICKS = 8;
+
+/** UTC midnight ms for an ISO "YYYY-MM-DD" date (timezone-safe bucketing). */
+function utcMs(iso: string): number {
+  return new Date(iso + "T00:00:00Z").getTime();
+}
+
+/**
+ * Explicit x-axis ticks at natural calendar boundaries. Given the series' ISO
+ * dates (ascending, "YYYY-MM-DD"), returns a subset that exists in the data —
+ * the axis is a category axis keyed on `date`, so ticks must be real values:
+ *   - span ≤ 45 days  → weekly:  first data date on/after each ISO Monday.
+ *   - span ≤ 550 days → monthly: first data date in each calendar month.
+ *   - longer          → yearly:  first data date in each calendar year.
+ * The bucket list is then capped at MAX_TICKS by taking every Nth (keeping the
+ * first). Empty → []; single point → that date.
+ */
+function calendarTicks(dates: string[]): string[] {
+  if (dates.length <= 1) return dates.slice();
+  const spanDays =
+    (utcMs(dates[dates.length - 1]) - utcMs(dates[0])) / 86_400_000;
+
+  let keyOf: (iso: string) => string;
+  if (spanDays <= 45) {
+    // ISO week key: shift each date back to its Monday (UTC) and stamp it.
+    keyOf = (iso) => {
+      const d = new Date(iso + "T00:00:00Z");
+      const dow = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
+      d.setUTCDate(d.getUTCDate() - dow);
+      return d.toISOString().slice(0, 10);
+    };
+  } else if (spanDays <= 550) {
+    keyOf = (iso) => iso.slice(0, 7); // YYYY-MM
+  } else {
+    keyOf = (iso) => iso.slice(0, 4); // YYYY
+  }
+
+  // First data date in each bucket (dates are already ascending).
+  const ticks: string[] = [];
+  let last: string | undefined;
+  for (const iso of dates) {
+    const k = keyOf(iso);
+    if (k !== last) {
+      ticks.push(iso);
+      last = k;
+    }
+  }
+
+  if (ticks.length <= MAX_TICKS) return ticks;
+  // Thin evenly to ≤ MAX_TICKS, always keeping the first.
+  const step = Math.ceil(ticks.length / MAX_TICKS);
+  return ticks.filter((_, i) => i % step === 0);
+}
+
 /** recharts v3 reports the hovered index as number | string | null |
  *  undefined; null when the pointer is outside the plot area. */
 function toIndex(v: unknown): number | null {
@@ -138,6 +193,19 @@ export function AssetChart({
   const pnlOffset = useMemo(
     () => zeroSplitOffset(pnlData.map((p) => p.total)),
     [pnlData],
+  );
+
+  // Calendar-boundary x ticks per view. Price charts `data`; P&L charts the
+  // sliced `pnlData`. `pnlData` has unstable identity (a fresh slice each
+  // render), so the P&L memo keys on the stable [data, firstActivity] instead.
+  const priceTicks = useMemo(
+    () => calendarTicks(data.map((p) => p.date)),
+    [data],
+  );
+  const pnlTicks = useMemo(
+    () => calendarTicks(pnlData.map((p) => p.date)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, firstActivity],
   );
 
   // Scrub header: hovered point (or latest when not hovering) + delta vs the
@@ -258,6 +326,7 @@ export function AssetChart({
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
+                ticks={priceTicks}
                 minTickGap={24}
               />
               <YAxis
@@ -336,6 +405,7 @@ export function AssetChart({
                 tick={{ fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
+                ticks={pnlTicks}
                 minTickGap={24}
               />
               <YAxis
