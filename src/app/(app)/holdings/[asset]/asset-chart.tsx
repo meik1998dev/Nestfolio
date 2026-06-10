@@ -6,7 +6,7 @@
  * what the single chart shows, and range buttons are links that re-run the server
  * computation via `?range=` (keeps the client dumb and the history server-side).
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -57,6 +57,27 @@ function toIndex(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Vertical-gradient stop offset (0..1) for zero-split coloring of an Area. The
+ * Area's bounding box runs from its rendered top (max, or 0 if all negative) to
+ * its rendered bottom (min, or 0 if all positive) — recharts draws the fill from
+ * the zero baseline — so the zero line sits at `top / (top - bottom)` from the
+ * top. Nulls are skipped; an empty/flat series collapses to a single color
+ * (green when ≥ 0, else red) without dividing by zero.
+ */
+function zeroSplitOffset(values: (number | null | undefined)[]): number {
+  const nums = values.filter(
+    (v): v is number => v != null && Number.isFinite(v),
+  );
+  if (nums.length === 0) return 1; // nothing to chart → harmless (green)
+  const dataMax = Math.max(...nums);
+  const dataMin = Math.min(...nums);
+  const top = Math.max(dataMax, 0);
+  const bottom = Math.min(dataMin, 0);
+  if (top === bottom) return top >= 0 ? 1 : 0; // flat series → solid color
+  return Math.min(1, Math.max(0, top / (top - bottom)));
 }
 
 export function AssetChart({
@@ -111,6 +132,13 @@ export function AssetChart({
   const trendColor = trendUp
     ? "var(--color-emerald-600)"
     : "var(--color-red-600)";
+
+  // Zero-split gradient stop for the P&L (total) area: green above the zero
+  // line, red below. Computed over `pnlData` (the charted, sliced series).
+  const pnlOffset = useMemo(
+    () => zeroSplitOffset(pnlData.map((p) => p.total)),
+    [pnlData],
+  );
 
   // Scrub header: hovered point (or latest when not hovering) + delta vs the
   // first point of the visible series. The P&L view charts `pnlData`, so both
@@ -271,9 +299,34 @@ export function AssetChart({
               {...hoverProps}
             >
               <defs>
+                <linearGradient id="assetPnlStroke" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset={pnlOffset}
+                    stopColor="var(--color-emerald-600)"
+                  />
+                  <stop offset={pnlOffset} stopColor="var(--color-red-600)" />
+                </linearGradient>
                 <linearGradient id="assetPnlFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={trendColor} stopOpacity={0.3} />
-                  <stop offset="100%" stopColor={trendColor} stopOpacity={0} />
+                  <stop
+                    offset="0%"
+                    stopColor="var(--color-emerald-600)"
+                    stopOpacity={0.3}
+                  />
+                  <stop
+                    offset={pnlOffset}
+                    stopColor="var(--color-emerald-600)"
+                    stopOpacity={0}
+                  />
+                  <stop
+                    offset={pnlOffset}
+                    stopColor="var(--color-red-600)"
+                    stopOpacity={0}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="var(--color-red-600)"
+                    stopOpacity={0.3}
+                  />
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} strokeOpacity={0.15} />
@@ -332,7 +385,7 @@ export function AssetChart({
                 type="monotone"
                 dataKey="total"
                 name="Total"
-                stroke={trendColor}
+                stroke="url(#assetPnlStroke)"
                 strokeWidth={2}
                 fill="url(#assetPnlFill)"
                 connectNulls
