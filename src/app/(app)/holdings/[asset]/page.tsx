@@ -79,8 +79,9 @@ function directionColor(type: string): string {
  * Collapse the asset's already-fetched trade ledger into chart markers: one per
  * (date, side) bucket, with quantities summed. Only buy/sell legs become markers
  * (1-leg wallet moves like delivery/send aren't trades). Reuses `detail.transactions`
- * — no extra DB reads. `qty` is omitted unless every leg in the bucket had a known
- * amount; `price` is the quantity-weighted average when prices are known.
+ * — no extra DB reads. `qty` is the summed leg amount, omitted only when that sum
+ * is non-positive; `price` is the quantity-weighted average over the priced legs
+ * (so it may cover fewer units than `qty` when some legs had no price).
  */
 function deriveTrades(
   transactions: {

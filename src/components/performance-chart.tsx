@@ -24,6 +24,13 @@ import { cn } from "@/lib/utils";
 import { formatUSD } from "@/lib/format";
 import type { PerfPoint, PerfRange } from "@/lib/insights/performance.types";
 import { PERF_RANGES } from "@/lib/insights/performance.types";
+import {
+  axisLabel,
+  calendarTicks,
+  fullDate,
+  toIndex,
+  zeroSplitOffset,
+} from "@/lib/charts";
 
 type View = "value" | "pnl" | "return";
 
@@ -35,115 +42,6 @@ function fmtPct(v: unknown): string {
   return v == null || !Number.isFinite(Number(v))
     ? "—"
     : `${Number(v) >= 0 ? "+" : ""}${(Number(v) * 100).toFixed(1)}%`;
-}
-
-/** Axis tick label. Includes the year (e.g. "Jan '24") on multi-year ranges. */
-function axisLabel(iso: string, withYear: boolean): string {
-  const d = new Date(iso + "T00:00:00Z");
-  if (withYear) {
-    return `${d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })} '${String(
-      d.getUTCFullYear(),
-    ).slice(2)}`;
-  }
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-/** Full date for tooltips, always with the year (e.g. "Oct 3, 2025"). */
-function fullDate(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-/** Most ticks an axis should show before we thin to avoid overlap. */
-const MAX_TICKS = 8;
-
-/** UTC midnight ms for an ISO "YYYY-MM-DD" date (timezone-safe bucketing). */
-function utcMs(iso: string): number {
-  return new Date(iso + "T00:00:00Z").getTime();
-}
-
-/**
- * Explicit x-axis ticks at natural calendar boundaries. Given the series' ISO
- * dates (ascending, "YYYY-MM-DD"), returns a subset that exists in the data —
- * the axis is a category axis keyed on `date`, so ticks must be real values:
- *   - span ≤ 45 days  → weekly:  first data date on/after each ISO Monday.
- *   - span ≤ 550 days → monthly: first data date in each calendar month.
- *   - longer          → yearly:  first data date in each calendar year.
- * The bucket list is then capped at MAX_TICKS by taking every Nth (keeping the
- * first). Empty → []; single point → that date.
- */
-function calendarTicks(dates: string[]): string[] {
-  if (dates.length <= 1) return dates.slice();
-  const spanDays =
-    (utcMs(dates[dates.length - 1]) - utcMs(dates[0])) / 86_400_000;
-
-  let keyOf: (iso: string) => string;
-  if (spanDays <= 45) {
-    // ISO week key: shift each date back to its Monday (UTC) and stamp it.
-    keyOf = (iso) => {
-      const d = new Date(iso + "T00:00:00Z");
-      const dow = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
-      d.setUTCDate(d.getUTCDate() - dow);
-      return d.toISOString().slice(0, 10);
-    };
-  } else if (spanDays <= 550) {
-    keyOf = (iso) => iso.slice(0, 7); // YYYY-MM
-  } else {
-    keyOf = (iso) => iso.slice(0, 4); // YYYY
-  }
-
-  // First data date in each bucket (dates are already ascending).
-  const ticks: string[] = [];
-  let last: string | undefined;
-  for (const iso of dates) {
-    const k = keyOf(iso);
-    if (k !== last) {
-      ticks.push(iso);
-      last = k;
-    }
-  }
-
-  if (ticks.length <= MAX_TICKS) return ticks;
-  // Thin evenly to ≤ MAX_TICKS, always keeping the first.
-  const step = Math.ceil(ticks.length / MAX_TICKS);
-  return ticks.filter((_, i) => i % step === 0);
-}
-
-/** recharts v3 reports the hovered index as number | string | null |
- *  undefined; null when the pointer is outside the plot area. */
-function toIndex(v: unknown): number | null {
-  if (v == null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Vertical-gradient stop offset (0..1) for zero-split coloring of an Area. The
- * Area's bounding box runs from its rendered top (max, or 0 if all negative) to
- * its rendered bottom (min, or 0 if all positive) — recharts draws the fill from
- * the zero baseline — so the zero line sits at `top / (top - bottom)` from the
- * top. Nulls are skipped; an empty/flat series collapses to a single color
- * (green when ≥ 0, else red) without dividing by zero.
- */
-function zeroSplitOffset(values: (number | null | undefined)[]): number {
-  const nums = values.filter(
-    (v): v is number => v != null && Number.isFinite(v),
-  );
-  if (nums.length === 0) return 1; // nothing to chart → harmless (green)
-  const dataMax = Math.max(...nums);
-  const dataMin = Math.min(...nums);
-  const top = Math.max(dataMax, 0);
-  const bottom = Math.min(dataMin, 0);
-  if (top === bottom) return top >= 0 ? 1 : 0; // flat series → solid color
-  return Math.min(1, Math.max(0, top / (top - bottom)));
 }
 
 export function PerformanceChart({

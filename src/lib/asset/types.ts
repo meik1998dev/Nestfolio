@@ -15,13 +15,15 @@ export function parseRange(raw: string | undefined): AssetRange {
 
 /**
  * A single charted trade marker: the user's own buy/sell on this asset, keyed by
- * day. Same-day same-side trades are aggregated into one marker server-side, so
- * `qty` is the summed quantity (omitted when no leg had a known amount).
+ * day. Same-day same-side trades are aggregated into one marker server-side.
  */
 export interface AssetTrade {
   date: string; // YYYY-MM-DD
   side: "buy" | "sell";
+  /** Summed quantity across the day's legs; omitted when the sum is non-positive. */
   qty?: number;
+  /** Quantity-weighted average over only the priced legs — may cover fewer units
+   *  than `qty` when some legs were unpriced. Omitted when no leg had a price. */
   price?: number;
 }
 
