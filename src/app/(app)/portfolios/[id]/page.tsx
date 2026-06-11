@@ -41,7 +41,13 @@ import {
 } from "@/components/ui/table";
 import { SortableTable } from "@/components/sortable-table";
 import { Badge } from "@/components/ui/badge";
-import { formatUSD, formatQty, formatDate, pnlColor } from "@/lib/format";
+import {
+  formatUSD,
+  formatQty,
+  formatDate,
+  formatRatioPct,
+  pnlColor,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getPortfolioDetail } from "@/lib/portfolio/detail";
 import {
@@ -278,6 +284,12 @@ async function PortfolioDetailContent({
                     sortable: true,
                   },
                   {
+                    key: "return",
+                    header: "Return",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
                     key: "target",
                     header: "Target",
                     align: "right",
@@ -291,6 +303,10 @@ async function PortfolioDetailContent({
                     value: h.value,
                     unrealized: h.pnl?.unrealizedPnl ?? null,
                     total: h.pnl?.totalPnl ?? null,
+                    return:
+                      h.pnl?.totalPnl != null && h.pnl.costBasis > 1e-6
+                        ? h.pnl.totalPnl / h.pnl.costBasis
+                        : null,
                   },
                   cells: {
                     asset: (
@@ -331,6 +347,24 @@ async function PortfolioDetailContent({
                           : "—"}
                       </span>
                     ),
+                    return: (() => {
+                      const pct =
+                        h.pnl?.totalPnl != null && h.pnl.costBasis > 1e-6
+                          ? h.pnl.totalPnl / h.pnl.costBasis
+                          : null;
+                      return (
+                        <span
+                          className={cn(
+                            "tabular-nums",
+                            pct != null && pnlColor(pct),
+                          )}
+                        >
+                          {pct != null
+                            ? formatRatioPct(pct, { signed: true })
+                            : "—"}
+                        </span>
+                      );
+                    })(),
                     target: (
                       <TargetInput
                         holdingId={h.holding.id}
