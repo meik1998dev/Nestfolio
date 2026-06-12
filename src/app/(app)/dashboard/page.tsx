@@ -346,6 +346,7 @@ function HoldingsTable({ view }: { view: PnlView }) {
               sortable: true,
             },
             { key: "total", header: "Total", align: "right", sortable: true },
+            { key: "return", header: "Return", align: "right", sortable: true },
           ]}
           rows={view.holdings.map((h) => ({
             key: h.ticker,
@@ -359,6 +360,10 @@ function HoldingsTable({ view }: { view: PnlView }) {
               unrealized: h.unrealizedPnl,
               realized: h.realizedPnl,
               total: h.totalPnl,
+              return:
+                h.totalPnl !== null && h.costBasis > 1e-6
+                  ? h.totalPnl / h.costBasis
+                  : null,
             },
             cells: {
               ticker: (
@@ -416,6 +421,21 @@ function HoldingsTable({ view }: { view: PnlView }) {
                     : "—"}
                 </span>
               ),
+              return: (() => {
+                const pct =
+                  h.totalPnl !== null && h.costBasis > 1e-6
+                    ? h.totalPnl / h.costBasis
+                    : null;
+                return (
+                  <span
+                    className={cn("tabular-nums", pct !== null && pnlColor(pct))}
+                  >
+                    {pct !== null
+                      ? formatRatioPct(pct, { signed: true })
+                      : "—"}
+                  </span>
+                );
+              })(),
             },
           }))}
         />

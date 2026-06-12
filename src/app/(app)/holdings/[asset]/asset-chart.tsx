@@ -378,6 +378,10 @@ export function AssetChart({
                   active && payload?.length ? (
                     <TooltipBox label={fullDate(payload[0].payload.date)}>
                       <Row
+                        name="Return"
+                        value={fmtPct(payload[0].payload.returnPct)}
+                      />
+                      <Row
                         name="Total"
                         value={fmtSigned(payload[0].payload.total)}
                       />

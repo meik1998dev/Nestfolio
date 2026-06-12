@@ -36,4 +36,6 @@ export interface AssetSeriesPoint {
   realized: number;
   unrealized: number | null;
   total: number | null;
+  /** total P&L ÷ cost basis on this date; null when no cost deployed or no price. */
+  returnPct: number | null;
 }

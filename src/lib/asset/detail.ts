@@ -447,6 +447,10 @@ function buildSeries(
       realized: p.realizedPnl,
       unrealized: p.unrealizedPnl,
       total: p.totalPnl,
+      returnPct:
+        p.totalPnl != null && pos.costBasis > 1e-6
+          ? p.totalPnl / pos.costBasis
+          : null,
     });
   }
   return points;

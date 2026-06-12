@@ -11,6 +11,7 @@ import {
   LineChart as LineIcon,
   ArrowLeftRight,
   TriangleAlert,
+  Percent,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -36,7 +37,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatUSD, formatQty, formatDate, pnlColor } from "@/lib/format";
+import {
+  formatUSD,
+  formatQty,
+  formatDate,
+  formatRatioPct,
+  pnlColor,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getAssetDetail, parseRange } from "@/lib/asset/detail";
 import type { AssetTrade } from "@/lib/asset/types";
@@ -254,6 +261,24 @@ async function AssetContent({
           <PnlStatTabs data={timeframes} investedCapital={detail.costBasis} />
         ) : (
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatCard
+              icon={<Percent className="size-4" />}
+              label="Return"
+              value={
+                detail.pnlKnown &&
+                detail.total != null &&
+                detail.costBasis > 1e-6
+                  ? formatRatioPct(detail.total / detail.costBasis, {
+                      signed: true,
+                    })
+                  : "—"
+              }
+              valueClass={
+                detail.pnlKnown && detail.total != null
+                  ? pnlColor(detail.total)
+                  : ""
+              }
+            />
             <StatCard
               icon={
                 (detail.total ?? 0) >= 0 ? (
