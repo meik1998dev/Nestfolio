@@ -386,6 +386,8 @@ async function AssetContent({
             amountHeld={detail.amountHeld}
             avgCost={detail.avgCost}
             livePrice={detail.livePrice}
+            netWorth={netWorth}
+            currentValue={detail.marketValue}
           />
         )}
 

@@ -27,11 +27,17 @@ export function WhatIf({
   amountHeld,
   avgCost,
   livePrice,
+  netWorth,
+  currentValue,
 }: {
   symbol: string;
   amountHeld: number;
   avgCost: number;
   livePrice: number | null;
+  /** Total portfolio net worth at live prices — basis for the projected weight. */
+  netWorth: number;
+  /** This position's live market value (null when unpriceable). */
+  currentValue: number | null;
 }) {
   // Anchor the initial scenario on the live price, falling back to avg cost.
   const anchor = livePrice ?? (avgCost > 0 ? avgCost : 1);
@@ -45,6 +51,15 @@ export function WhatIf({
   const unrealized = marketValue - costBasis;
   const returnPct = costBasis > 0 ? (unrealized / costBasis) * 100 : null;
   const vsLive = livePrice != null ? ((price - livePrice) / livePrice) * 100 : null;
+
+  // Projected share of the portfolio: only this asset moves to the hypothetical
+  // price; everything else stays at its live value.
+  const restOfPortfolio = netWorth - (currentValue ?? 0);
+  const projectedTotal = restOfPortfolio + marketValue;
+  const weightPct =
+    currentValue != null && projectedTotal > 0
+      ? (marketValue / projectedTotal) * 100
+      : null;
 
   return (
     <Card>
@@ -107,7 +122,7 @@ export function WhatIf({
         </div>
 
         {amountHeld > 0 ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Projected
               label="Unrealized P&L"
               tip="Paper gain or loss at this price: amount held × (hypothetical price − average cost). Not booked until you sell."
@@ -124,6 +139,11 @@ export function WhatIf({
               label="Market value"
               tip="What your position would be worth at this price: amount held × hypothetical price."
               value={formatUSD(marketValue)}
+            />
+            <Projected
+              label="Portfolio weight"
+              tip="This position's share of your total portfolio at the hypothetical price, with every other asset held at its live value."
+              value={weightPct != null ? formatPct(weightPct) : "—"}
             />
           </div>
         ) : (
