@@ -34,8 +34,9 @@ function defaultYahoo(): YahooLike {
 /** Grams per troy ounce — for converting XAU spot to a per-gram gold price. */
 const GRAMS_PER_TROY_OUNCE = 31.1035;
 
-/** Live-price cache TTL. Stocks move intraday; 5 min keeps us cheap + fresh. */
-const LIVE_TTL_MS = 5 * 60 * 1000;
+/** Live-price cache TTL. 1 min keeps pages consistent with each other while
+ * still bounding upstream quote calls. */
+const LIVE_TTL_MS = 60 * 1000;
 
 /** Yahoo symbol for spot gold (XAU/USD). */
 const GOLD_SPOT_SYMBOL = "XAUUSD=X";
