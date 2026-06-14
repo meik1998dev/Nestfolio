@@ -61,6 +61,7 @@ import { PerformanceChart } from "@/components/performance-chart";
 import { PnlStatTabs } from "@/components/pnl-stat-tabs";
 import { TargetAllocationPie } from "./allocation";
 import { TargetInput } from "./target-input";
+import { PortfolioWhatIf } from "./what-if";
 
 export async function generateMetadata({
   params,
@@ -237,6 +238,15 @@ async function PortfolioDetailContent({
             <TargetAllocationPie slices={detail.allocation} />
           </CardContent>
         </Card>
+
+        {/* What-if scenario — portfolio-wide % move */}
+        <PortfolioWhatIf
+          currentValue={detail.totalValue}
+          unrealized={detail.pnl.unrealized}
+          realized={detail.pnl.realized}
+          costBasis={detail.pnl.costBasis}
+          hasMissingPrices={detail.hasMissingPrices}
+        />
 
         {/* Holdings */}
         <Card>
