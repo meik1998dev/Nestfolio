@@ -14,7 +14,7 @@
  * enter the position ledger, so they're excluded — consistent with the PnL view.
  */
 import { createClient } from "@/lib/supabase/server";
-import { resolveToken } from "@/lib/price/ticker";
+import { resolveToken, isStablecoin } from "@/lib/price/ticker";
 import {
   listTransactions,
   listWalletTrades,
@@ -352,6 +352,24 @@ async function loadAllRows(): Promise<TradeRow[]> {
 }
 
 /**
+ * Resolve one row to its pricing ticker. Wallet rows already carry the resolved
+ * equity/pair ticker (the classifier wrote "NVDA", "BTC-USD") — re-running
+ * `resolveToken` on a bare "NVDA" wrongly yields "unknown" and would drop the
+ * position, so we take it as-is (cash/stablecoin tickers still drop to null).
+ * Manual rows hold raw symbols and go through the caller's resolver: the global
+ * `resolveToken`, or the subtree-aware `scopedTicker` for a portfolio scope.
+ */
+function tickerForRow(
+  row: TradeRow,
+  resolveTicker: (asset: string) => string | null,
+): string | null {
+  if (row.source === "wallet") {
+    return isStablecoin(row.asset) ? null : row.asset.toUpperCase();
+  }
+  return resolveTicker(row.asset)?.toUpperCase() ?? null;
+}
+
+/**
  * Tag each trade row with its pricing ticker (dropping rows that don't resolve),
  * then derive the classified event stream the ledger replays. `resolveTicker`
  * varies by caller: the global ledger uses plain `resolveToken`; a portfolio uses
@@ -365,7 +383,7 @@ function buildLoaded(
 ): LoadedTrades {
   const trades: TaggedTrade[] = rows
     .map((row) => {
-      const ticker = resolveTicker(row.asset)?.toUpperCase() ?? null;
+      const ticker = tickerForRow(row, resolveTicker);
       return ticker && (!keep || keep.has(ticker)) ? { row, ticker } : null;
     })
     .filter((t): t is TaggedTrade => t !== null);
