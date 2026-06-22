@@ -194,7 +194,8 @@ async function DashboardBody({
         <StatCard
           icon={<Coins className="size-4" />}
           label="Invested"
-          value={formatUSD(summary.holdingsValue)}
+          value={formatUSD(pnl.rollup.costBasis)}
+          sub="Net cost of what you still hold — excludes P&L."
         />
       </div>
 
