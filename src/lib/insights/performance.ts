@@ -146,9 +146,6 @@ export async function getPortfolioPerformance(
   let spyAt: (d: string) => number | null = () => null;
   let benchTimeline: BenchPoint[] | null = null;
   let spyLiveOrNull: number | null = null;
-  // SPY close on/just before the chart's start — the anchor the index benchmark
-  // rebases to, so the dashed line reads as "S&P 500 since <chart start>".
-  let spyAnchor: number | null = null;
   if (opts.benchmark) {
     const spyStart = earliest ?? startIso;
     const spyMap = await loadHistory(supabase, SPY_TICKER, spyStart, today);
@@ -156,7 +153,6 @@ export async function getPortfolioPerformance(
     await ensurePrices(spyMap, SPY_TICKER, [...axis, ...tradeDays]);
     spyAt = (d) => priceOnOrBefore(spyMap, d);
     benchTimeline = buildBenchmarkTimeline(trades, histLookup, spyAt);
-    spyAnchor = spyAt(startIso);
     const spyLive = await readLivePrices(supabase, [SPY_TICKER]);
     spyLiveOrNull = spyLive.get(SPY_TICKER) ?? null;
   }
@@ -221,14 +217,19 @@ export async function getPortfolioPerformance(
           ? (valueOut + realized) / invested - 1
           : null;
       point.spyValue = spyValue;
-      // The benchmark line is the S&P 500 index buy-and-hold, rebased to the
-      // chart's start: price(d) / price(start) − 1. Time-weighted — the figure
-      // Yahoo/Google quote for "S&P 500 since <start>" — deliberately NOT the
-      // portfolio's money-weighted return. (The Value view's `spyValue` keeps the
-      // separate "same cash flows into SPY" what-if in dollars.)
+      // Benchmark = "your exact cash flows, but into SPY" (money-weighted), so all
+      // three tabs tell one consistent story. Same basis as the portfolio above:
+      // total P&L (held mirror value − net cost + the mirror's realized) measured
+      // against net deployed cost.
+      const spyRealized = b?.spyRealized ?? 0;
       point.spyReturnPct =
-        spyAnchor != null && spyAnchor > 0 && spyNow != null
-          ? spyNow / spyAnchor - 1
+        invested != null && spyValue != null
+          ? (spyValue + spyRealized) / invested - 1
+          : null;
+      // What-if total P&L for the P&L tab: the mirror's realized + unrealized.
+      point.spyTotal =
+        b != null && spyValue != null
+          ? spyValue - b.costDeployed + spyRealized
           : null;
     }
 

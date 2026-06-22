@@ -69,11 +69,12 @@ export function PerformanceChart({
     series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4);
   const data = series;
 
-  // Benchmark only overlays on Value ($ what-if) and Return (% rebased) views.
+  // Benchmark overlays on all three views: $ what-if (Value), money-weighted
+  // return (Return %), and what-if P&L (P&L).
   const hasBench = data.some(
     (p) => p.spyValue != null || p.spyReturnPct != null,
   );
-  const showBench = benchmark && hasBench && view !== "pnl";
+  const showBench = benchmark && hasBench;
 
   const lastTotal = data.length ? data[data.length - 1].total : null;
   const lastReturn = data.length ? data[data.length - 1].returnPct : null;
@@ -143,8 +144,8 @@ export function PerformanceChart({
           </ToggleButton>
         </div>
         <div className="flex items-center gap-2">
-          {/* S&P 500 benchmark on/off (not meaningful on the P&L view) */}
-          {hasBench && view !== "pnl" && (
+          {/* S&P 500 benchmark on/off */}
+          {hasBench && (
             <Button
               size="xs"
               variant={showBench ? "secondary" : "ghost"}
@@ -438,6 +439,12 @@ export function PerformanceChart({
                         name="Unrealized"
                         value={fmtSigned(payload[0].payload.unrealized)}
                       />
+                      {showBench && (
+                        <Row
+                          name="S&P 500 (what-if)"
+                          value={fmtSigned(payload[0].payload.spyTotal)}
+                        />
+                      )}
                     </TooltipBox>
                   ) : null
                 }
@@ -473,6 +480,19 @@ export function PerformanceChart({
                 dot={false}
                 isAnimationActive={false}
               />
+              {showBench && (
+                <Line
+                  type="monotone"
+                  dataKey="spyTotal"
+                  name="S&P 500"
+                  stroke={SPY_COLOR}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  connectNulls
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              )}
             </AreaChart>
           )}
         </ResponsiveContainer>
@@ -483,9 +503,10 @@ export function PerformanceChart({
           <Legend color={trendColor} label="Total" />
           <Legend color="var(--color-amber-500)" label="Realized" />
           <Legend color="var(--color-blue-500)" label="Unrealized" dashed />
+          {showBench && <Legend color={SPY_COLOR} label="S&P 500" dashed />}
         </div>
       )}
-      {showBench && data.length > 0 && (
+      {showBench && view !== "pnl" && data.length > 0 && (
         <div className="text-muted-foreground flex flex-wrap items-center gap-4 text-xs">
           <Legend
             color={trendColor}
