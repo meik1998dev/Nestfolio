@@ -146,6 +146,9 @@ export async function getPortfolioPerformance(
   let spyAt: (d: string) => number | null = () => null;
   let benchTimeline: BenchPoint[] | null = null;
   let spyLiveOrNull: number | null = null;
+  // SPY close on/just before the chart's start — the anchor the Return % index
+  // line rebases to, so it reads as "S&P 500 buy-and-hold since <chart start>".
+  let spyAnchor: number | null = null;
   if (opts.benchmark) {
     const spyStart = earliest ?? startIso;
     const spyMap = await loadHistory(supabase, SPY_TICKER, spyStart, today);
@@ -153,6 +156,7 @@ export async function getPortfolioPerformance(
     await ensurePrices(spyMap, SPY_TICKER, [...axis, ...tradeDays]);
     spyAt = (d) => priceOnOrBefore(spyMap, d);
     benchTimeline = buildBenchmarkTimeline(trades, histLookup, spyAt);
+    spyAnchor = spyAt(startIso);
     const spyLive = await readLivePrices(supabase, [SPY_TICKER]);
     spyLiveOrNull = spyLive.get(SPY_TICKER) ?? null;
   }
@@ -217,16 +221,18 @@ export async function getPortfolioPerformance(
           ? (valueOut + realized) / invested - 1
           : null;
       point.spyValue = spyValue;
-      // Benchmark = "your exact cash flows, but into SPY" (money-weighted), so all
-      // three tabs tell one consistent story. Same basis as the portfolio above:
-      // total P&L (held mirror value − net cost + the mirror's realized) measured
-      // against net deployed cost.
-      const spyRealized = b?.spyRealized ?? 0;
+      // Return % tab: the S&P 500 INDEX bought and held from the chart's start —
+      // price(d) / price(start) − 1. The headline "what the market did" (the figure
+      // Yahoo/Google quote), independent of when you added capital.
       point.spyReturnPct =
-        invested != null && spyValue != null
-          ? (spyValue + spyRealized) / invested - 1
+        spyAnchor != null && spyAnchor > 0 && spyNow != null
+          ? spyNow / spyAnchor - 1
           : null;
-      // What-if total P&L for the P&L tab: the mirror's realized + unrealized.
+      // Value / P&L tabs keep the dollar "what-if": your exact cash flows mirrored
+      // into SPY (held value, and realized + unrealized P&L). A dollar line has to
+      // track your actual deposits, so it's money-weighted and sits below the index
+      // % above when most capital was deployed recently.
+      const spyRealized = b?.spyRealized ?? 0;
       point.spyTotal =
         b != null && spyValue != null
           ? spyValue - b.costDeployed + spyRealized
