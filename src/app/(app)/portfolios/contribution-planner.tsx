@@ -210,8 +210,7 @@ export function ContributionPlanner({
                     ) : (
                       <span className="text-muted-foreground">
                         {" "}
-                        — still {formatUSD(plan.topLevelShortfall)} short of full
-                        target
+                        — still {formatUSD(plan.shortfall)} short of full target
                       </span>
                     )}
                   </p>
