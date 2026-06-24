@@ -39,7 +39,9 @@ import {
   totalAssignedValue,
 } from "@/lib/portfolio/tree";
 import { rebalanceTree } from "@/lib/portfolio/rebalance";
+import { slimContribTree } from "@/lib/portfolio/contribution";
 import { PortfolioForm } from "./portfolio-form";
+import { ContributionPlanner } from "./contribution-planner";
 import { EditPortfolioButton } from "./edit-portfolio";
 import { DeleteButton } from "@/components/delete-button";
 import { AssignSelect } from "./assign-select";
@@ -138,6 +140,14 @@ async function PortfoliosContent() {
             )}
           </CardHeader>
         </Card>
+      )}
+
+      {/* --- Monthly contribution planner --------------------------------- */}
+      {portfolios.length > 0 && grandTotal > 0 && (
+        <ContributionPlanner
+          nodes={slimContribTree(roots)}
+          grandTotal={grandTotal}
+        />
       )}
 
       {/* --- Tree ---------------------------------------------------------- */}
