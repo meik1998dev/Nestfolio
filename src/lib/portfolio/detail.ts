@@ -247,7 +247,7 @@ export const getPortfolioDetail = cache(
     const allocation: AllocationSlice[] = [
       ...portfolioSlices,
       ...holdingSlices,
-    ].sort((a, b) => b.value - a.value);
+    ].sort((a, b) => b.share - a.share);
 
     // --- PnL scoped to subtree positions ---
     const fullPnl = await getPnl(user.id);
