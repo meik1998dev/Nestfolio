@@ -88,13 +88,24 @@ describe("isDisplaySpam", () => {
 });
 
 describe("excludeDisplaySpam", () => {
-  it("drops only spam, preserving real holdings (and their P&L)", () => {
+  const walletHold = (asset: string, amount: number): Holding => ({
+    ...hold(asset, amount),
+    source: "wallet",
+  });
+
+  it("drops only WALLET spam, preserving real holdings (and their P&L)", () => {
     const kept = excludeDisplaySpam([
-      hold("PAXG", 5),
-      hold("世界杯", 2000),
-      hold("NVDAon", 1),
-      hold("宝贝狗", 2000),
+      walletHold("PAXG", 5),
+      walletHold("世界杯", 2000),
+      walletHold("NVDAon", 1),
+      walletHold("宝贝狗", 2000),
     ]);
     expect(kept.map((h) => h.asset)).toEqual(["PAXG", "NVDAon"]);
+  });
+
+  it("never hides a manual holding, even an unresolvable typo (USDR for USDT)", () => {
+    // A mistyped manual position must stay visible so it can be seen + deleted.
+    const kept = excludeDisplaySpam([hold("USDR", 500), hold("世界杯", 2000)]);
+    expect(kept.map((h) => h.asset)).toEqual(["USDR", "世界杯"]);
   });
 });

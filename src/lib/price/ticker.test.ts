@@ -4,6 +4,8 @@ import {
   resolveToken,
   isTokenizedStock,
   isStablecoin,
+  isFiat,
+  isCashLike,
 } from "./ticker";
 
 describe("isTokenizedStock", () => {
@@ -42,7 +44,24 @@ describe("isStablecoin", () => {
   });
 });
 
+describe("isFiat / isCashLike", () => {
+  it("treats plain fiat (USD / CASH) as cash-like, not a stablecoin", () => {
+    expect(isFiat("USD")).toBe(true);
+    expect(isFiat("cash")).toBe(true);
+    expect(isStablecoin("USD")).toBe(false); // USD is fiat, not a stablecoin
+    expect(isCashLike("USD")).toBe(true);
+    expect(isCashLike("USDT")).toBe(true); // stablecoins are cash-like too
+    expect(isCashLike("BNB")).toBe(false);
+  });
+});
+
 describe("resolveToken", () => {
+  it("resolves plain fiat (USD) to cash at $1 with no ticker", () => {
+    const r = resolveToken("USD");
+    expect(r.kind).toBe("stablecoin"); // the shared cash-like bucket
+    expect(r.ticker).toBeNull();
+  });
+
   it("resolves tokenized stocks to the equity ticker, never the DEX price", () => {
     const r = resolveToken("NVDAon");
     expect(r.kind).toBe("stock");

@@ -85,7 +85,17 @@ export function isDisplaySpam(asset: string): boolean {
   return resolveToken(asset).kind === "unknown";
 }
 
-/** Drop unpriceable spam holdings from a list, for display surfaces only. */
+/**
+ * Drop unpriceable spam holdings from a list, for display surfaces only.
+ *
+ * Only ever drops WALLET-synced rows: those are airdropped tokens the user never
+ * chose. Manual holdings are always kept — a user typo (e.g. "USDR" for "USDT")
+ * resolves to "unknown", and hiding it would make the row invisible AND
+ * undeletable from the UI. Keep it visible (valued $0 / "no price") so it can be
+ * seen and fixed or removed.
+ */
 export function excludeDisplaySpam(holdings: Holding[]): Holding[] {
-  return holdings.filter((h) => !isDisplaySpam(h.asset));
+  return holdings.filter(
+    (h) => h.source === "manual" || !isDisplaySpam(h.asset),
+  );
 }
