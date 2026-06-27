@@ -33,6 +33,14 @@ export interface ResolvedToken {
 const STABLECOINS = new Set(["USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD"]);
 
 /**
+ * Plain fiat cash positions (not on-chain) — e.g. dollars in a bank or on an
+ * exchange, tracked manually. Valued at $1 and classed as cash, exactly like a
+ * stablecoin; they just aren't crypto. Lets a user hold "USD cash" distinct from
+ * "USDT" under the same Cash bucket.
+ */
+const FIAT = new Set(["USD", "CASH"]);
+
+/**
  * Known crypto symbol → Yahoo pricing pair. BNB and PAXG are deep-liquidity so
  * their market price is reliable. Extend as new assets appear.
  */
@@ -103,6 +111,16 @@ export function isStablecoin(symbol: string): boolean {
   return STABLECOINS.has(symbol.toUpperCase());
 }
 
+/** True if the symbol is plain fiat cash (USD / CASH), valued at $1. */
+export function isFiat(symbol: string): boolean {
+  return FIAT.has(symbol.toUpperCase());
+}
+
+/** True if the symbol is cash-like: a stablecoin or fiat (both $1 cash). */
+export function isCashLike(symbol: string): boolean {
+  return isStablecoin(symbol) || isFiat(symbol);
+}
+
 /**
  * Map a tokenized-stock symbol to its underlying equity ticker.
  * Strips the trailing `on`, then applies the override map. Returns null if the
@@ -122,7 +140,11 @@ export function tokenToTicker(symbol: string): string | null {
 export function resolveToken(symbol: string): ResolvedToken {
   const upper = symbol.toUpperCase();
 
-  if (isStablecoin(symbol)) {
+  // Cash-like: stablecoins AND plain fiat (USD/CASH). Both value at $1 and class
+  // as cash. We reuse the "stablecoin" kind as the single cash-like bucket so
+  // every downstream consumer (valuation $1, net-worth cash class, no live-price
+  // fetch) treats them identically.
+  if (isCashLike(symbol)) {
     return {
       symbol,
       kind: "stablecoin",
