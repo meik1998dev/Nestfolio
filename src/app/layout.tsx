@@ -25,8 +25,14 @@ export const metadata: Metadata = {
     default: "Nestfolio",
     template: "%s · Nestfolio",
   },
+  applicationName: "Nestfolio",
   description:
     "Personal wealth command center — net worth, portfolios, and PnL.",
+  appleWebApp: {
+    capable: true,
+    title: "Nestfolio",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({
