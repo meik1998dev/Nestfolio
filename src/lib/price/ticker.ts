@@ -76,6 +76,24 @@ const STOCK_TICKER_OVERRIDES: Record<string, string> = {
   // GOOGLON: "GOOGL",
 };
 
+/**
+ * Binance bStocks (BEP-20 tokenized US equities, June 2026 launch): on-chain
+ * symbol → underlying equity ticker. Symbols end in `B` (MUB → MU) but a bare
+ * suffix rule would swallow crypto like BTCB, so membership is explicit —
+ * extend this map as Binance lists more.
+ */
+const BSTOCK_TICKERS: Record<string, string> = {
+  MUB: "MU",
+  NVDAB: "NVDA",
+  TSLAB: "TSLA",
+  CRCLB: "CRCL",
+  SNDKB: "SNDK",
+  // Moralis serves stale metadata ("M2B") for the MUB contract
+  // (0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699), so synced holdings can carry
+  // that symbol. Alias it until their index catches up.
+  M2B: "MU",
+};
+
 /** Display names for resolved equity tickers (best-effort, optional). */
 const STOCK_DISPLAY_NAMES: Record<string, string> = {
   NVDA: "NVIDIA",
@@ -87,6 +105,9 @@ const STOCK_DISPLAY_NAMES: Record<string, string> = {
   TSLA: "Tesla",
   UBER: "Uber",
   NVO: "Novo Nordisk",
+  MU: "Micron Technology",
+  CRCL: "Circle Internet Group",
+  SNDK: "Sandisk",
 };
 
 /** True if the symbol looks like an Ondo tokenized stock (trailing `on`). */
@@ -162,6 +183,17 @@ export function resolveToken(symbol: string): ResolvedToken {
       ticker,
       displayName: STOCK_DISPLAY_NAMES[ticker] ?? ticker,
       issuer: "Ondo Global Markets",
+    };
+  }
+
+  const bstock = BSTOCK_TICKERS[upper];
+  if (bstock) {
+    return {
+      symbol,
+      kind: "stock",
+      ticker: bstock,
+      displayName: STOCK_DISPLAY_NAMES[bstock] ?? bstock,
+      issuer: "Binance bStocks",
     };
   }
 

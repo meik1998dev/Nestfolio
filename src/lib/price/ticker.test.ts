@@ -86,6 +86,25 @@ describe("resolveToken", () => {
     expect(r.ticker).toBe("PAXG-USD");
   });
 
+  it("resolves Binance bStocks to the equity ticker", () => {
+    const r = resolveToken("MUB");
+    expect(r.kind).toBe("stock");
+    expect(r.ticker).toBe("MU");
+    expect(r.displayName).toBe("Micron Technology");
+    expect(r.issuer).toBe("Binance bStocks");
+    expect(resolveToken("TSLAB").ticker).toBe("TSLA");
+  });
+
+  it("aliases Moralis's stale M2B metadata to Micron", () => {
+    const r = resolveToken("M2B");
+    expect(r.kind).toBe("stock");
+    expect(r.ticker).toBe("MU");
+  });
+
+  it("keeps BTCB as crypto despite the B suffix", () => {
+    expect(resolveToken("BTCB").kind).toBe("crypto");
+  });
+
   it("flags unknown tokens rather than silently mispricing", () => {
     const r = resolveToken("SCAMTOKEN");
     expect(r.kind).toBe("unknown");
