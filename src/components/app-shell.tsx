@@ -8,16 +8,20 @@ import { NAV_ITEMS } from "@/components/nav";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import type { PortfolioNavLink } from "@/lib/portfolio/nav-links";
 
 /**
  * App chrome: a slim fixed sidebar (desktop) that collapses to a slide-over
- * (mobile). Server layout passes the user's email and the sign-out control.
+ * (mobile). Server layout passes the user's email, the sign-out control, and
+ * quick links to each portfolio (rendered under the Portfolios nav item).
  */
 export function AppShell({
   email,
+  portfolioLinks = [],
   children,
 }: {
   email: string;
+  portfolioLinks?: PortfolioNavLink[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -29,20 +33,39 @@ export function AppShell({
   const nav = (
     <nav className="flex flex-1 flex-col gap-0.5 px-3">
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-        <Link
-          key={href}
-          href={href}
-          onClick={() => setMobileOpen(false)}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-            isActive(href)
-              ? "bg-secondary text-foreground"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-        >
-          <Icon className="size-4" />
-          {label}
-        </Link>
+        <div key={href}>
+          <Link
+            href={href}
+            onClick={() => setMobileOpen(false)}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              isActive(href)
+                ? "bg-secondary text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Icon className="size-4" />
+            {label}
+          </Link>
+          {/* Quick links: one per portfolio, indented by tree depth. */}
+          {href === "/portfolios" &&
+            portfolioLinks.map((p) => (
+              <Link
+                key={p.href}
+                href={p.href}
+                onClick={() => setMobileOpen(false)}
+                style={{ paddingLeft: `${2.5 + p.depth * 0.75}rem` }}
+                className={cn(
+                  "block truncate rounded-lg py-1.5 pr-3 text-sm transition-colors",
+                  pathname === p.href
+                    ? "bg-secondary text-foreground font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {p.label}
+              </Link>
+            ))}
+        </div>
       ))}
     </nav>
   );
