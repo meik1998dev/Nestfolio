@@ -25,6 +25,7 @@ import {
 } from "@/lib/wallet/provider";
 import { priceProvider, type PriceProvider } from "@/lib/price/provider";
 import { resolveToken } from "@/lib/price/ticker";
+import { rebuildCostBasis } from "@/lib/pnl/ledger";
 import type { SyncStatus } from "@/lib/types";
 
 /** How many blocks to re-scan each sync to absorb shallow reorgs. */
@@ -39,6 +40,8 @@ export interface SyncDeps {
   db?: Db;
   wallet?: WalletProvider;
   prices?: PriceProvider;
+  /** PnL rebuild hook (step 6). Defaults to the real `rebuildCostBasis`. */
+  rebuild?: typeof rebuildCostBasis;
 }
 
 export interface SyncResult {
@@ -46,6 +49,8 @@ export interface SyncResult {
   transfersAdded: number;
   holdingsUpserted: number;
   lastSyncedBlock: number | null;
+  /** Result of the post-sync PnL rebuild (absent when the sync itself failed). */
+  rebuild?: { eventsWritten: number; tickersUpserted: number };
   error?: string;
 }
 
@@ -69,6 +74,7 @@ export async function runSync(
   const db = deps.db ?? createServiceClient();
   const wallet = deps.wallet ?? walletProvider();
   const prices = deps.prices ?? priceProvider();
+  const rebuild = deps.rebuild ?? rebuildCostBasis;
 
   const { data: walletRow, error: wErr } = await db
     .from("wallets")
@@ -135,11 +141,31 @@ export async function runSync(
       })
       .eq("id", walletId);
 
+    // 6. Rebuild trade_events + cost_basis so PnL reflects the new transfers
+    //    without a manual Recompute. Runs even on a 0-transfer sync (idempotent,
+    //    and it heals a cost_basis left stale from before this hook existed).
+    //    A rebuild failure degrades the sync but keeps the advanced cursor:
+    //    transfers are already persisted and the next rebuild is a full replay.
+    let rebuildResult: SyncResult["rebuild"];
+    try {
+      rebuildResult = await rebuild(userId, walletId, { db, prices });
+    } catch (err) {
+      await setStatus(db, walletId, "degraded");
+      return {
+        status: "degraded",
+        transfersAdded,
+        holdingsUpserted,
+        lastSyncedBlock: nextBlock,
+        error: `pnl rebuild: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+
     return {
       status: "synced",
       transfersAdded,
       holdingsUpserted,
       lastSyncedBlock: nextBlock,
+      rebuild: rebuildResult,
     };
   } catch (err) {
     // Degrade gracefully: keep last-known rows, flag the wallet, never wipe.

@@ -33,7 +33,7 @@ export function SyncButton({ disabled }: { disabled?: boolean }) {
         toast.error(json.error ?? "Sync failed");
       } else if (json.status === "synced") {
         toast.success(
-          `Synced — ${json.holdingsUpserted ?? 0} balances, ${json.transfersAdded ?? 0} transfers`,
+          `Synced — ${json.holdingsUpserted ?? 0} balances, ${json.transfersAdded ?? 0} transfers, P&L updated`,
         );
       } else {
         toast.warning(

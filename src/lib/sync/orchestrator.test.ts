@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runSync } from "./orchestrator";
+import type { rebuildCostBasis } from "@/lib/pnl/ledger";
 import type {
   WalletProvider,
   NormalizedTransfer,
@@ -211,6 +212,12 @@ const noopPrices: PriceProvider = {
   goldPerGram: () => Promise.resolve(80),
 };
 
+/** Stub of the post-sync PnL rebuild — the real one needs trade_events/cost_basis tables. */
+const okRebuild = () =>
+  vi.fn<typeof rebuildCostBasis>(() =>
+    Promise.resolve({ eventsWritten: 3, tickersUpserted: 2 }),
+  );
+
 function seedWallet(db: FakeDb, lastBlock: number | null) {
   db.tables.wallets.rows.push({
     id: WALLET_ID,
@@ -248,6 +255,7 @@ describe("runSync — cold start", () => {
       db: db as never,
       wallet,
       prices: noopPrices,
+      rebuild: okRebuild(),
     });
 
     expect(res.status).toBe("synced");
@@ -281,11 +289,13 @@ describe("runSync — idempotency", () => {
       db: db as never,
       wallet,
       prices: noopPrices,
+      rebuild: okRebuild(),
     });
     await runSync(USER, WALLET_ID, {
       db: db as never,
       wallet,
       prices: noopPrices,
+      rebuild: okRebuild(),
     });
 
     expect(db.tables.wallet_transfers.rows).toHaveLength(2);
@@ -317,6 +327,7 @@ describe("runSync — warm delta", () => {
       db: db as never,
       wallet,
       prices: noopPrices,
+      rebuild: okRebuild(),
     });
 
     expect(requestedFrom).toBe(980); // 1000 − 20-block overlap
@@ -357,12 +368,94 @@ describe("runSync — holding reconciliation", () => {
       db: db as never,
       wallet,
       prices: noopPrices,
+      rebuild: okRebuild(),
     });
 
     const holdings = db.tables.holdings.rows;
     expect(holdings).toHaveLength(1);
     expect(holdings[0].asset).toBe("NVDAon");
     expect(holdings[0].amount).toBe(9);
+  });
+});
+
+describe("runSync — post-sync PnL rebuild", () => {
+  it("runs the rebuild after a successful sync and reports its counts", async () => {
+    const db = new FakeDb();
+    seedWallet(db, null);
+    const wallet = new MockWallet([makeTransfer(0, 100)], [bal("NVDAon", 5)]);
+    const rebuild = okRebuild();
+
+    const res = await runSync(USER, WALLET_ID, {
+      db: db as never,
+      wallet,
+      prices: noopPrices,
+      rebuild,
+    });
+
+    expect(res.status).toBe("synced");
+    expect(res.rebuild).toEqual({ eventsWritten: 3, tickersUpserted: 2 });
+    expect(rebuild).toHaveBeenCalledTimes(1);
+    // Same user/wallet and the SAME injected db + prices (no fresh clients).
+    expect(rebuild).toHaveBeenCalledWith(USER, WALLET_ID, {
+      db,
+      prices: noopPrices,
+    });
+  });
+
+  it("also runs on a 0-transfer sync (heals a stale cost_basis)", async () => {
+    const db = new FakeDb();
+    seedWallet(db, 100);
+    const wallet = new MockWallet([], [bal("NVDAon", 5)]);
+    const rebuild = okRebuild();
+
+    const res = await runSync(USER, WALLET_ID, {
+      db: db as never,
+      wallet,
+      prices: noopPrices,
+      rebuild,
+    });
+
+    expect(res.status).toBe("synced");
+    expect(rebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebuild failure → degraded, but transfers + advanced cursor are kept", async () => {
+    const db = new FakeDb();
+    seedWallet(db, null);
+    const wallet = new MockWallet([makeTransfer(0, 100)], [bal("NVDAon", 5)]);
+    const rebuild = vi.fn<typeof rebuildCostBasis>(() =>
+      Promise.reject(new Error("no historical price for NVDA")),
+    );
+
+    const res = await runSync(USER, WALLET_ID, {
+      db: db as never,
+      wallet,
+      prices: noopPrices,
+      rebuild,
+    });
+
+    expect(res.status).toBe("degraded");
+    expect(res.error).toMatch(/pnl rebuild: no historical price/);
+    // Raw data is safe: transfers stored, cursor advanced, wallet flagged.
+    expect(db.tables.wallet_transfers.rows).toHaveLength(1);
+    expect(db.tables.wallets.rows[0].last_synced_block).toBe(100);
+    expect(db.tables.wallets.rows[0].sync_status).toBe("degraded");
+  });
+
+  it("is NOT called when the sync itself fails", async () => {
+    const db = new FakeDb();
+    seedWallet(db, 500);
+    const rebuild = okRebuild();
+
+    const res = await runSync(USER, WALLET_ID, {
+      db: db as never,
+      wallet: new ThrowingWallet(),
+      prices: noopPrices,
+      rebuild,
+    });
+
+    expect(res.status).toBe("degraded");
+    expect(rebuild).not.toHaveBeenCalled();
   });
 });
 
@@ -384,6 +477,7 @@ describe("runSync — graceful failure", () => {
       db: db as never,
       wallet: new ThrowingWallet(),
       prices: noopPrices,
+      rebuild: okRebuild(),
     });
 
     expect(res.status).toBe("degraded");
