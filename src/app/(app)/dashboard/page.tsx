@@ -1,10 +1,9 @@
 /**
  * Portfolio command center (F5 — S5.1/S5.3/S5.4/S5.5). The landing screen.
  *
- * Server Component: assembles the holdings-based net worth (`getNetWorthSummary`),
- * the snapshot history, and PnL, then hands data to small client charts. Degrades
- * gracefully — empty holdings/prices never blank the page; missing snapshots show
- * a friendly history empty state.
+ * Server Component: assembles the holdings-based net worth (`getNetWorthSummary`)
+ * and PnL, then hands data to small client charts. Degrades
+ * gracefully — empty holdings/prices never blank the page.
  */
 import {
   Wallet,
@@ -47,7 +46,6 @@ import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
 import { getCachedUser } from "@/lib/supabase/server";
 import { PerformanceChart } from "@/components/performance-chart";
 import { AllocationPie } from "./charts";
-import { SnapshotButton } from "./snapshot-button";
 import { PnlTimeframeCards } from "./pnl-timeframe-cards";
 import { RecomputeButton } from "./recompute-button";
 
@@ -76,7 +74,6 @@ export default function DashboardPage({
         title="Portfolio"
         description="Everything you hold, valued live — at a glance."
       >
-        <SnapshotButton variant="outline" label="Snapshot" />
         <RecomputeButton />
       </PageHeader>
 
@@ -138,13 +135,17 @@ async function DashboardBody({
     ...windowed,
   ];
 
+  // The hero's month line: true P&L generated in the past window (ledger
+  // replay delta), not a deposit-mixed value change.
+  const monthPnl = timeframes.find((t) => t.timeframe === "1M") ?? null;
+
   return !hasData ? (
     <FirstRunEmptyState />
   ) : (
     <div className="space-y-6">
       <ReconciliationBanner view={pnl} />
 
-      {/* Hero: portfolio value + MoM */}
+      {/* Hero: portfolio value + 1M P&L (from the ledger replay, no snapshots) */}
       <Card>
         <CardHeader className="pb-2">
           <CardDescription>Portfolio value</CardDescription>
@@ -153,32 +154,29 @@ async function DashboardBody({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {summary.momChange ? (
+          {monthPnl ? (
             <p
               className={cn(
                 "flex items-center gap-1.5 text-sm font-medium",
-                pnlColor(summary.momChange.absolute),
+                pnlColor(monthPnl.total),
               )}
             >
-              {summary.momChange.absolute >= 0 ? (
+              {monthPnl.total >= 0 ? (
                 <ArrowUpRight className="size-4" />
               ) : (
                 <ArrowDownRight className="size-4" />
               )}
               <span className="tabular-nums">
-                {formatUSD(summary.momChange.absolute, { signed: true })}
-              </span>
-              <span className="tabular-nums">
-                ({formatRatioPct(summary.momChange.pct, { signed: true })})
+                {formatUSD(monthPnl.total, { signed: true })}
               </span>
               <span className="text-muted-foreground font-normal">
-                over the past month
+                total P&amp;L in the past month
               </span>
             </p>
           ) : (
             <p className="text-muted-foreground text-sm">
-              Month-over-month change appears once you have a snapshot from a
-              month ago.
+              Log a trade or sync a wallet — monthly P&amp;L appears once you
+              have a month of history.
             </p>
           )}
           {summary.hasMissingPrices && (
@@ -249,9 +247,8 @@ async function DashboardBody({
               <p className="font-medium">History is just getting started</p>
               <p className="text-muted-foreground max-w-sm text-sm">
                 Log a trade or sync a wallet and your value line fills in from
-                recorded prices. Take a snapshot to start the record.
+                recorded prices.
               </p>
-              <SnapshotButton />
             </div>
           )}
         </CardContent>

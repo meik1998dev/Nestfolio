@@ -54,6 +54,9 @@ export interface TradeRow {
   value: number | null;
   source: "manual" | "wallet";
   note: string | null;
+  /** Owning wallet (wallet-sourced rows only) — scopes realized P&L of
+   *  fully-closed positions to a portfolio subtree. */
+  walletId?: string;
 }
 
 /**
@@ -69,7 +72,7 @@ export const listWalletTrades = cache(async (): Promise<TradeRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("trade_events")
-    .select("id, ts, type, ticker, shares, unit_price, usd_value")
+    .select("id, ts, type, ticker, shares, unit_price, usd_value, wallet_id")
     .order("ts", { ascending: false });
   if (error) throw new Error(error.message);
   return (
@@ -81,6 +84,7 @@ export const listWalletTrades = cache(async (): Promise<TradeRow[]> => {
       shares: number;
       unit_price: number | null;
       usd_value: number | null;
+      wallet_id: string;
     }>
   ).map((e) => ({
     id: e.id,
@@ -92,6 +96,7 @@ export const listWalletTrades = cache(async (): Promise<TradeRow[]> => {
     value: e.usd_value !== null ? Number(e.usd_value) : null,
     source: "wallet",
     note: null,
+    walletId: e.wallet_id,
   }));
 });
 

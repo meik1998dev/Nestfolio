@@ -71,15 +71,39 @@ export async function loadHistory(
  * Ensure the history map has a close on/before each requested date, fetching via
  * the PriceProvider (which fetches a window + persists) for any that are missing.
  */
+/**
+ * Forward-filling a close across more than this many days hides market movement
+ * (a "flat" fake segment) — such dates are treated as missing and re-fetched.
+ */
+const MAX_FORWARD_FILL_DAYS = 4;
+
+/** Newest stored date on or before `date`, or null. */
+function lastStoredOnOrBefore(
+  map: Map<string, number>,
+  date: string,
+): string | null {
+  let best: string | null = null;
+  for (const d of map.keys()) {
+    if (d <= date && (!best || d > best)) best = d;
+  }
+  return best;
+}
+
 export async function ensurePrices(
   map: Map<string, number>,
   ticker: string,
   dates: string[],
 ): Promise<void> {
   const provider = priceProvider();
-  const missing = [...new Set(dates)].filter(
-    (d) => priceOnOrBefore(map, d) === null,
-  );
+  const missing = [...new Set(dates)].filter((d) => {
+    if (priceOnOrBefore(map, d) === null) return true;
+    // A stored close exists, but if it forward-fills a long gap the value is
+    // fiction — re-fetch so recent history reflects real closes. Fetched
+    // closes persist to price_history, so this heals the cache permanently.
+    const last = lastStoredOnOrBefore(map, d);
+    if (!last) return true;
+    return (Date.parse(d) - Date.parse(last)) / 86_400_000 > MAX_FORWARD_FILL_DAYS;
+  });
   await Promise.all(
     missing.map(async (d) => {
       const close = await provider.histPrice(ticker, d);

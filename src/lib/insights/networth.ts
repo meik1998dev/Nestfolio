@@ -1,6 +1,6 @@
 /**
  * Net-worth aggregation (EN5.2) — the single source of truth used by the
- * dashboard and the snapshot job.
+ * dashboard.
  *
  *   Net Worth = Σ holding market values
  *
@@ -109,7 +109,7 @@ export interface BreakdownInputs {
   portfolioNames: Map<string, string>;
 }
 
-/** Build the chart breakdowns for the dashboard (and snapshot payload). */
+/** Build the chart breakdowns for the dashboard. */
 export function buildBreakdowns(input: BreakdownInputs): NetWorthBreakdowns {
   const { holdings, holdingValues, portfolioNames } = input;
 
@@ -149,26 +149,4 @@ export function buildBreakdowns(input: BreakdownInputs): NetWorthBreakdowns {
   );
 
   return { byAssetClass, byPortfolio };
-}
-
-/** Month-over-month change vs a prior net worth. Null prior → null change. */
-export interface MoMChange {
-  /** Absolute change in USD. */
-  absolute: number;
-  /** Fractional change (0.05 = +5%); 0 when prior is 0. */
-  pct: number;
-  /** The prior net worth compared against. */
-  prior: number;
-  /** When that prior value was taken (ISO). */
-  priorAt: string;
-}
-
-export function momChange(
-  current: number,
-  prior: { netWorth: number; takenAt: string } | null,
-): MoMChange | null {
-  if (!prior) return null;
-  const absolute = current - prior.netWorth;
-  const pct = prior.netWorth !== 0 ? absolute / prior.netWorth : 0;
-  return { absolute, pct, prior: prior.netWorth, priorAt: prior.takenAt };
 }

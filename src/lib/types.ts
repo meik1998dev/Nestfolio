@@ -56,14 +56,6 @@ export interface Transaction {
   created_at: string;
 }
 
-export interface Snapshot {
-  id: string;
-  user_id: string;
-  taken_at: string;
-  net_worth: number;
-  breakdown: Record<string, unknown>;
-}
-
 // --- Sync & PnL persistence ---
 export interface Wallet {
   id: string;

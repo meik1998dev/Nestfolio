@@ -4,10 +4,10 @@
  * wallet) at each sampled date and sums market value + realized / unrealized P&L
  * across every ticker, giving a dense daily "value & P&L over time" curve.
  *
- * Why recompute from trades (not the materialized `cost_basis` / `snapshots`):
- * `cost_basis` has no history and `snapshots` are sparse (one per day, only when
- * taken). Replaying the ledger against stored daily closes yields a continuous
- * line at any range — the same trick the asset page uses, just aggregated.
+ * Why recompute from trades (not the materialized `cost_basis`):
+ * `cost_basis` has no history. Replaying the ledger against stored daily closes
+ * yields a continuous line at any range — the same trick the asset page uses,
+ * just aggregated.
  *
  * Methodology note: "value" is the market value of *traded positions* (the same
  * universe `getPnl` reports on), not cash. Stablecoin deposits are cash and don't
@@ -345,7 +345,7 @@ interface LoadedTrades {
 }
 
 /** Combined manual + wallet trade rows (raw, unresolved), the row source for replay. */
-async function loadAllRows(): Promise<TradeRow[]> {
+export async function loadAllRows(): Promise<TradeRow[]> {
   const [manual, walletTrades] = await Promise.all([
     listTransactions(),
     listWalletTrades(),
@@ -391,7 +391,7 @@ function tickerForRow(
  * the subtree-aware `scopedTicker`. When `keep` is given, only trades whose
  * resolved ticker is in it survive (scopes a portfolio to its own positions).
  */
-function buildLoaded(
+export function buildLoaded(
   rows: TradeRow[],
   resolveTicker: (asset: string) => string | null,
   keep?: Set<string>,
@@ -421,12 +421,10 @@ function buildLoaded(
   return { trades, events, tickers, earliest };
 }
 
-/**
- * Load daily-close history per ticker over [startIso, today], seed captured
- * 1-leg (delivery/send) prices, and back-fill missing closes on each requested
- * valuation date. Returns a (ticker, date) → close lookup that forward-fills.
- */
-async function loadHistories(
+/** Load daily-close history per ticker over [startIso, today], seed captured
+ *  1-leg (delivery/send) prices, and back-fill missing closes on each requested
+ *  valuation date. Returns a (ticker, date) → close lookup that forward-fills. */
+export async function loadHistories(
   supabase: Awaited<ReturnType<typeof createClient>>,
   trades: TaggedTrade[],
   tickers: string[],

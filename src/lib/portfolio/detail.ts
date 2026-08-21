@@ -179,8 +179,12 @@ export const getPortfolioDetail = cache(
     // Wallets feeding this subtree (by current holdings). Used to attribute the
     // realized PnL of FULLY-CLOSED positions, which have no holding row to match
     // on ticker and would otherwise be silently dropped from the rollup.
+    // Cash-like rows (stablecoins/fiat) don't pull trade history: a synced
+    // USDT parked in a Cash portfolio must not drag the wallet's whole
+    // realized stock P&L into it.
     const subtreeWalletAddrs = new Set(
       subtreeHoldings
+        .filter((h) => resolveToken(h.asset).kind !== "stablecoin")
         .map((h) => h.wallet_ref?.toLowerCase())
         .filter((a): a is string => !!a),
     );
@@ -255,10 +259,13 @@ export const getPortfolioDetail = cache(
     // OR it's fully closed but was traded in a wallet that feeds this subtree —
     // otherwise realized PnL from sold-out positions vanishes from the rollup.
     const isClosed = (p: PositionPnl) => Math.abs(p.shares) < 1e-9;
+    const closedWalletIds = (p: PositionPnl): string[] =>
+      p.walletIds ?? (p.walletId ? [p.walletId] : []);
     const positions = fullPnl.holdings.filter(
       (p) =>
         tickerSet.has(p.ticker) ||
-        (isClosed(p) && !!p.walletId && subtreeWalletIds.has(p.walletId)),
+        (isClosed(p) &&
+          closedWalletIds(p).some((w) => subtreeWalletIds.has(w))),
     );
     const positionByTicker = new Map(positions.map((p) => [p.ticker, p]));
     const pnl = rollup(positions);

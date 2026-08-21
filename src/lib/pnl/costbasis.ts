@@ -30,6 +30,8 @@ export interface LedgerPosition {
    * fully-closed positions to a portfolio, which have no current holding to match.
    */
   walletId?: string;
+  /** All wallets that traded this ticker (replay path) — same scoping use. */
+  walletIds?: string[];
 }
 
 /** A historical-price lookup for 1-leg events: ticker + ISO date → USD close. */

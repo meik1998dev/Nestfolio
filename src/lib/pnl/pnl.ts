@@ -1,24 +1,32 @@
 /**
- * PnL read path (EN6.3) — the LIGHT side of the two-speed model.
+ * PnL read path (EN6.3) — replays the FULL trade ledger (manual + wallet)
+ * through the same average-cost engine the performance chart uses, then prices
+ * open positions at live quotes.
  *
- * `getPnl` reads the materialized `cost_basis` (realized + remaining cost,
- * computed by the heavy sync) and the live equity prices, then computes
- * per-holding unrealized/total PnL and a portfolio rollup — pure DB + price-cache
- * math, no chain calls. It refreshes stale live prices via the PriceProvider
- * (F4 `refreshLivePrices`) and runs the reconciliation guard so the UI can show
- * an error instead of a wrong number when cash doesn't tie out.
+ * Why replay instead of reading the materialized `cost_basis`: cost_basis is
+ * rebuilt from WALLET transfers only — manual transactions never enter it, and
+ * rows written by older code for now-manual tickers linger as stale artifacts
+ * (upserts don't prune obsolete tickers). The header cards and the charts MUST
+ * show the same numbers, so both consume one ledger replay. Single-user scale
+ * (~150 trades) makes this cheap; pure DB + price-cache math, no chain calls.
  *
- * Degrades gracefully: a missing live price yields null PnL for that holding and
- * flags the rollup; everything else still renders last-known values.
+ * Degrades gracefully: a missing live price yields null PnL for that holding
+ * and flags the rollup; everything else still renders last-known values.
  */
 import { createClient } from "@/lib/supabase/server";
 import { priceProvider, type PriceProvider } from "@/lib/price/provider";
 import { refreshLivePrices } from "@/lib/sync/orchestrator";
 import { resolveToken } from "@/lib/price/ticker";
+import { todayIso } from "@/lib/price/history";
 import {
+  loadAllRows,
+  buildLoaded,
+  loadHistories,
+} from "@/lib/insights/performance";
+import {
+  buildLedger,
   positionPnl,
   rollup,
-  type LedgerPosition,
   type PositionPnl,
   type PnlRollup,
 } from "./costbasis";
@@ -30,7 +38,7 @@ export interface PnlView {
   rollup: PnlRollup;
   /** Reconciliation status, or null if there's no wallet/cash to check. */
   reconciliation: ReconcileResult | null;
-  /** True when no wallet or no cost-basis rows exist yet. */
+  /** True when there are no trades to replay yet. */
   empty: boolean;
 }
 
@@ -42,8 +50,9 @@ export interface GetPnlDeps {
 }
 
 /**
- * Compute the full PnL view for the user. Reads cost_basis, refreshes + reads
- * live prices, runs the reconciliation guard. Pure DB + price-cache math.
+ * Compute the full PnL view for the user: ledger replay + live prices +
+ * reconciliation guard. Shares its engine with the performance series, so the
+ * headline cards tie to the charts by construction.
  */
 export async function getPnl(
   _userId: string,
@@ -52,43 +61,50 @@ export async function getPnl(
   const supabase = deps.supabase ?? (await createClient());
   const prices = deps.prices ?? priceProvider();
 
-  // RLS scopes these reads to the user; no explicit user_id filter needed.
-  const { data: cbRows, error: cbErr } = await supabase
-    .from("cost_basis")
-    .select("ticker, shares, cost_basis, realized_pnl, wallet_id");
-  if (cbErr) throw new Error(`read cost_basis: ${cbErr.message}`);
-
-  const positions: LedgerPosition[] = (cbRows ?? []).map(
-    (r: {
-      ticker: string;
-      shares: number;
-      cost_basis: number;
-      realized_pnl: number;
-      wallet_id: string | null;
-    }) => ({
-      ticker: r.ticker,
-      shares: Number(r.shares),
-      costBasis: Number(r.cost_basis),
-      realizedPnl: Number(r.realized_pnl),
-      walletId: r.wallet_id ?? undefined,
-    }),
-  );
-
-  if (positions.length === 0) {
-    return {
-      holdings: [],
-      rollup: rollup([]),
-      reconciliation: null,
-      empty: true,
-    };
+  const rows = await loadAllRows();
+  const { trades, events, tickers } = buildLoaded(rows, (a) => resolveToken(a).ticker);
+  if (trades.length === 0) {
+    return { holdings: [], rollup: rollup([]), reconciliation: null, empty: true };
   }
 
-  // Refresh + read live prices for held tickers (TTL-gated inside the provider).
-  const tickers = positions.filter((p) => p.shares > 0).map((p) => p.ticker);
-  await refreshLivePrices(tickers, prices);
-  const priceByTicker = await readLivePrices(supabase, tickers);
+  // Historical prices only matter for 1-leg events (delivery/send); their
+  // captured unit prices seed the lookup, so this is usually zero-fetch.
+  const today = todayIso();
+  const startIso = events.reduce(
+    (min, e) => (e.ts.slice(0, 10) < min ? e.ts.slice(0, 10) : min),
+    today,
+  );
+  const histLookup = await loadHistories(supabase, trades, tickers, startIso, today, [today]);
 
-  const holdings = positions
+  // Average-cost positions across the merged manual + wallet ledger.
+  const positions = buildLedger(events, histLookup);
+  if (positions.length === 0) {
+    return { holdings: [], rollup: rollup([]), reconciliation: null, empty: true };
+  }
+
+  // Wallet attribution per ticker — scopes fully-closed positions to portfolio
+  // subtrees (they have no current holding row to match on).
+  const walletsByTicker = new Map<string, Set<string>>();
+  for (const t of trades) {
+    if (t.row.source !== "wallet" || !t.row.walletId) continue;
+    let set = walletsByTicker.get(t.ticker);
+    if (!set) walletsByTicker.set(t.ticker, (set = new Set()));
+    set.add(t.row.walletId);
+  }
+
+  const heldTickers = positions
+    .filter((p) => p.shares > 1e-9)
+    .map((p) => p.ticker);
+
+  // Refresh + read live prices for held tickers (TTL-gated inside).
+  await refreshLivePrices(heldTickers, prices);
+  const priceByTicker = await readLivePrices(supabase, heldTickers);
+
+  const scoped = positions.map((p) => ({
+    ...p,
+    walletIds: [...(walletsByTicker.get(p.ticker) ?? [])],
+  }));
+  const holdings = scoped
     .map((p) => positionPnl(p, priceByTicker.get(p.ticker) ?? null))
     // Brokerage-style: biggest total PnL first; losers at the bottom.
     .sort((a, b) => (b.totalPnl ?? -Infinity) - (a.totalPnl ?? -Infinity));
@@ -103,7 +119,7 @@ export async function getPnl(
   };
 }
 
-/** Read cached live prices for the given tickers. */
+/** Read cached live prices for the given tickers into a ticker→price map. */
 async function readLivePrices(
   supabase: SupabaseLike,
   tickers: string[],
@@ -115,7 +131,7 @@ async function readLivePrices(
     .select("ticker, price")
     .in("ticker", tickers);
   for (const p of (data ?? []) as Array<{ ticker: string; price: number }>) {
-    map.set(p.ticker, Number(p.price));
+    map.set(p.ticker.toUpperCase(), Number(p.price));
   }
   return map;
 }

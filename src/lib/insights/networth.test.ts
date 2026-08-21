@@ -4,7 +4,6 @@ import {
   computeNetWorth,
   toBreakdown,
   buildBreakdowns,
-  momChange,
   assetClassForHolding,
 } from "./networth";
 
@@ -102,23 +101,5 @@ describe("assetClassForHolding", () => {
     expect(assetClassForHolding("paxg")).toBe("gold");
     // Tokenized stocks keep classifying as stock.
     expect(assetClassForHolding("NVDAon")).toBe("stock");
-  });
-});
-
-describe("momChange", () => {
-  it("returns null when there is no prior snapshot", () => {
-    expect(momChange(1000, null)).toBeNull();
-  });
-  it("computes absolute and pct change", () => {
-    const c = momChange(1100, {
-      netWorth: 1000,
-      takenAt: "2026-05-01T00:00:00Z",
-    });
-    expect(c?.absolute).toBe(100);
-    expect(c?.pct).toBeCloseTo(0.1, 9);
-  });
-  it("guards division by zero", () => {
-    const c = momChange(500, { netWorth: 0, takenAt: "2026-05-01T00:00:00Z" });
-    expect(c?.pct).toBe(0);
   });
 });

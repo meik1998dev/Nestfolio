@@ -2,11 +2,11 @@
 
 /**
  * Server assembly for net worth (EN5.2). Pulls the live inputs — priced
- * holdings — and runs the pure aggregation in `networth.ts`. Shared by the
- * dashboard (read) and the snapshot job (write).
+ * holdings — and runs the pure aggregation in `networth.ts`. Used by the
+ * dashboard (read).
  *
  * Degrades gracefully: an empty `live_prices` cache values holdings at 0 (the UI
- * shows them but they don't inflate net worth); no snapshots → null MoM change.
+ * shows them but they don't inflate net worth).
  */
 import { createClient } from "@/lib/supabase/server";
 import type { Holding, Portfolio } from "@/lib/types";
@@ -19,8 +19,6 @@ import {
 import {
   buildBreakdowns,
   computeNetWorth,
-  momChange,
-  type MoMChange,
   type NetWorthBreakdowns,
 } from "./networth";
 
@@ -28,8 +26,6 @@ export interface NetWorthSummary {
   netWorth: number;
   holdingsValue: number;
   breakdowns: NetWorthBreakdowns;
-  /** vs the most recent snapshot ≥ ~1 month old; null if none. */
-  momChange: MoMChange | null;
   /** True when the price cache is missing some held assets' prices. */
   hasMissingPrices: boolean;
 }
@@ -59,34 +55,12 @@ export async function getNetWorthSummary(): Promise<NetWorthSummary> {
     portfolioNames,
   });
 
-  const prior = await priorSnapshotForMoM(supabase);
-  const mom = momChange(netWorth, prior);
-
   return {
     netWorth,
     holdingsValue,
     breakdowns,
-    momChange: mom,
     hasMissingPrices: hasMissingPrices(holdings, holdingValues),
   };
-}
-
-/** The most recent snapshot taken ≥ ~28 days ago (the MoM comparison point). */
-async function priorSnapshotForMoM(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<{ netWorth: number; takenAt: string } | null> {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 28);
-  const { data } = await supabase
-    .from("snapshots")
-    .select("net_worth, taken_at")
-    .lte("taken_at", cutoff.toISOString())
-    .order("taken_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  const row = data as { net_worth: number; taken_at: string };
-  return { netWorth: Number(row.net_worth), takenAt: row.taken_at };
 }
 
 async function listPortfolios(

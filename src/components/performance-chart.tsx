@@ -8,6 +8,7 @@
  * (pass `basePath` so the links target the host page).
  */
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Area,
   AreaChart,
@@ -158,14 +159,14 @@ export function PerformanceChart({
               S&amp;P 500
             </Button>
           )}
-          {/* Range links — server recomputes the series */}
+          {/* Range links — soft RSC navigation (no full page reload) */}
           <div className="flex items-center gap-1">
             {PERF_RANGES.map((r) => (
               <Button
                 key={r}
                 size="xs"
                 variant={r === range ? "secondary" : "ghost"}
-                render={<a href={`${basePath}?range=${r}`}>{r}</a>}
+                render={<Link href={`${basePath}?range=${r}`}>{r}</Link>}
               />
             ))}
           </div>
