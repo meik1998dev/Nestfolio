@@ -122,7 +122,7 @@ function PortfolioDetailSkeleton() {
         <StatCardsSkeleton count={4} columns={4} />
         <ChartCardSkeleton /> {/* Performance */}
         <ChartCardSkeleton /> {/* Allocation */}
-        <TableSkeleton columns={6} /> {/* Holdings */}
+        <TableSkeleton columns={7} /> {/* Holdings */}
         <TableSkeleton columns={6} /> {/* Transactions */}
       </div>
     </>
@@ -276,6 +276,12 @@ async function PortfolioDetailContent({
                     sortable: true,
                   },
                   {
+                    key: "avgPrice",
+                    header: "Avg Price",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
                     key: "value",
                     header: "Value",
                     align: "right",
@@ -310,6 +316,8 @@ async function PortfolioDetailContent({
                   key: h.holding.id,
                   sort: {
                     amount: h.holding.amount,
+                    avgPrice:
+                      h.pnl != null && h.pnl.avgCost > 0 ? h.pnl.avgCost : null,
                     value: h.value,
                     unrealized: h.pnl?.unrealizedPnl ?? null,
                     total: h.pnl?.totalPnl ?? null,
@@ -327,6 +335,13 @@ async function PortfolioDetailContent({
                     amount: (
                       <span className="tabular-nums">
                         {formatQty(h.holding.amount)}
+                      </span>
+                    ),
+                    avgPrice: (
+                      <span className="tabular-nums">
+                        {h.pnl != null && h.pnl.avgCost > 0
+                          ? formatUSD(h.pnl.avgCost)
+                          : "—"}
                       </span>
                     ),
                     value: (
