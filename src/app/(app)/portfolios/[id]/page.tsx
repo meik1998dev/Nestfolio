@@ -46,6 +46,7 @@ import {
   formatQty,
   formatDate,
   formatRatioPct,
+  formatPct,
   pnlColor,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -122,7 +123,7 @@ function PortfolioDetailSkeleton() {
         <StatCardsSkeleton count={4} columns={4} />
         <ChartCardSkeleton /> {/* Performance */}
         <ChartCardSkeleton /> {/* Allocation */}
-        <TableSkeleton columns={7} /> {/* Holdings */}
+        <TableSkeleton columns={8} /> {/* Holdings */}
         <TableSkeleton columns={6} /> {/* Transactions */}
       </div>
     </>
@@ -167,6 +168,13 @@ async function PortfolioDetailContent({
     },
     ...windowed,
   ];
+
+  // Sum of every target allocation in this table — a quick check that the plan
+  // adds up to 100%. Holdings with no target count as 0.
+  const targetSum = detail.holdings.reduce(
+    (sum, h) => sum + (h.holding.target_pct ?? 0),
+    0,
+  );
 
   return (
     <>
@@ -255,8 +263,21 @@ async function PortfolioDetailContent({
               <Coins className="text-muted-foreground size-4" />
               Holdings
             </CardTitle>
-            <CardDescription>
-              Positions in this portfolio and its sub-portfolios.
+            <CardDescription className="flex flex-wrap items-center justify-between gap-2">
+              <span>Positions in this portfolio and its sub-portfolios.</span>
+              {detail.holdings.length > 0 && (
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    Math.abs(targetSum - 100) < 0.05
+                      ? "text-emerald-600 dark:text-emerald-500"
+                      : "text-amber-600 dark:text-amber-500",
+                  )}
+                  title="Sum of all target allocations. Should add up to 100%."
+                >
+                  Targets: {formatPct(targetSum)} of 100%
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -306,6 +327,12 @@ async function PortfolioDetailContent({
                     sortable: true,
                   },
                   {
+                    key: "weight",
+                    header: "Current",
+                    align: "right",
+                    sortable: true,
+                  },
+                  {
                     key: "target",
                     header: "Target",
                     align: "right",
@@ -324,6 +351,10 @@ async function PortfolioDetailContent({
                     return:
                       h.pnl?.totalPnl != null && h.pnl.costBasis > 1e-6
                         ? h.pnl.totalPnl / h.pnl.costBasis
+                        : null,
+                    weight:
+                      detail.totalValue > 1e-6
+                        ? h.value / detail.totalValue
                         : null,
                   },
                   cells: {
@@ -390,6 +421,13 @@ async function PortfolioDetailContent({
                         </span>
                       );
                     })(),
+                    weight: (
+                      <span className="tabular-nums">
+                        {detail.totalValue > 1e-6
+                          ? formatRatioPct(h.value / detail.totalValue)
+                          : "—"}
+                      </span>
+                    ),
                     target: (
                       <TargetInput
                         holdingId={h.holding.id}
