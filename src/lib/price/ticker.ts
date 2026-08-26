@@ -88,6 +88,7 @@ const BSTOCK_TICKERS: Record<string, string> = {
   TSLAB: "TSLA",
   CRCLB: "CRCL",
   SNDKB: "SNDK",
+  SMHB: "SMH",
   // Moralis serves stale metadata ("M2B") for the MUB contract
   // (0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699), so synced holdings can carry
   // that symbol. Alias it until their index catches up.
@@ -108,6 +109,7 @@ const STOCK_DISPLAY_NAMES: Record<string, string> = {
   MU: "Micron Technology",
   CRCL: "Circle Internet Group",
   SNDK: "Sandisk",
+  SMH: "VanEck Semiconductor ETF",
 };
 
 /** True if the symbol looks like an Ondo tokenized stock (trailing `on`). */

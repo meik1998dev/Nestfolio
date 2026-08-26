@@ -93,6 +93,7 @@ describe("resolveToken", () => {
     expect(r.displayName).toBe("Micron Technology");
     expect(r.issuer).toBe("Binance bStocks");
     expect(resolveToken("TSLAB").ticker).toBe("TSLA");
+    expect(resolveToken("SMHB").ticker).toBe("SMH");
   });
 
   it("aliases Moralis's stale M2B metadata to Micron", () => {
