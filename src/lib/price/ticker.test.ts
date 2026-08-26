@@ -102,6 +102,12 @@ describe("resolveToken", () => {
     expect(r.ticker).toBe("MU");
   });
 
+  it("aliases Moralis's stale SM7B metadata to SMH", () => {
+    const r = resolveToken("SM7B");
+    expect(r.kind).toBe("stock");
+    expect(r.ticker).toBe("SMH");
+  });
+
   it("keeps BTCB as crypto despite the B suffix", () => {
     expect(resolveToken("BTCB").kind).toBe("crypto");
   });

@@ -89,6 +89,9 @@ const BSTOCK_TICKERS: Record<string, string> = {
   CRCLB: "CRCL",
   SNDKB: "SNDK",
   SMHB: "SMH",
+  // Moralis serves stale metadata ("SM7B") for the SMHB contract, so synced
+  // holdings can carry that symbol. Alias it until their index catches up.
+  SM7B: "SMH",
   // Moralis serves stale metadata ("M2B") for the MUB contract
   // (0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699), so synced holdings can carry
   // that symbol. Alias it until their index catches up.
