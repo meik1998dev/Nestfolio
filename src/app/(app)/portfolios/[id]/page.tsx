@@ -251,7 +251,10 @@ async function PortfolioDetailContent({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <TargetAllocationPie slices={detail.allocation} />
+            <TargetAllocationPie
+              slices={detail.allocation}
+              targetsEnabled={targetsOn}
+            />
           </CardContent>
         </Card>
 

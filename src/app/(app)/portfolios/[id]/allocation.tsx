@@ -70,7 +70,14 @@ function alignmentPct(slices: AllocationSlice[]): number | null {
   return Math.max(0, 100 - absDrift / 2);
 }
 
-export function TargetAllocationPie({ slices }: { slices: AllocationSlice[] }) {
+export function TargetAllocationPie({
+  slices,
+  targetsEnabled = true,
+}: {
+  slices: AllocationSlice[];
+  /** False = the portfolio has the target feature off: pure actual-allocation donut. */
+  targetsEnabled?: boolean;
+}) {
   if (slices.length === 0) {
     return (
       <div className="text-muted-foreground flex h-[200px] items-center justify-center text-sm">
@@ -224,7 +231,7 @@ export function TargetAllocationPie({ slices }: { slices: AllocationSlice[] }) {
                 </span>
                 <span className="flex items-center gap-2 tabular-nums">
                   <span>{formatRatioPct(s.share)}</span>
-                  {s.targetPct != null ? (
+                  {!targetsEnabled ? null : s.targetPct != null ? (
                     <>
                       <span className="text-muted-foreground">
                         / {formatPct(s.targetPct)}
