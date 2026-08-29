@@ -309,7 +309,7 @@ async function PortfolioDetailContent({
                   },
                   {
                     key: "avgPrice",
-                    header: "Avg Price",
+                    header: "Avg / Current",
                     align: "right",
                     sortable: true,
                   },
@@ -384,10 +384,16 @@ async function PortfolioDetailContent({
                       </span>
                     ),
                     avgPrice: (
+                      // Average buy price and the live price side by side, so a
+                      // position reads as "paid X, worth Y now" without maths.
                       <span className="tabular-nums">
                         {h.pnl != null && h.pnl.avgCost > 0
                           ? formatUSD(h.pnl.avgCost)
                           : "—"}
+                        <span className="text-muted-foreground">
+                          {" / "}
+                          {h.price != null ? formatUSD(h.price) : "—"}
+                        </span>
                       </span>
                     ),
                     value: (

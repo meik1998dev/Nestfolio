@@ -24,6 +24,7 @@ import { getLivePricesForHoldings } from "@/lib/portfolio/prices";
 import {
   computeHoldingValues,
   excludeDisplaySpam,
+  unitPrice,
 } from "@/lib/portfolio/valuation";
 import {
   buildPortfolioTree,
@@ -44,6 +45,8 @@ import {
 export interface DetailHolding {
   holding: Holding;
   value: number;
+  /** Live unit price in USD, or null when the asset has no resolvable price. */
+  price: number | null;
   pnl: PositionPnl | null;
 }
 
@@ -292,6 +295,7 @@ export const getPortfolioDetail = cache(
         return {
           holding: h,
           value: holdingValues.get(h.id) ?? 0,
+          price: unitPrice(h.asset, prices),
           pnl: t ? (positionByTicker.get(t) ?? null) : null,
         };
       })

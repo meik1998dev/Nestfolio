@@ -28,7 +28,10 @@ export function tickerForAsset(asset: string): string {
  * stripped/raw symbol so price tables keyed either way still resolve. Returns
  * null when nothing matches (caller values it at 0 / flags "no price").
  */
-function unitPrice(asset: string, prices: Map<string, number>): number | null {
+export function unitPrice(
+  asset: string,
+  prices: Map<string, number>,
+): number | null {
   const resolved = resolveToken(asset);
   // Stablecoins are cash at $1 even when the live-price cache has no row.
   if (resolved.kind === "stablecoin") return 1;
