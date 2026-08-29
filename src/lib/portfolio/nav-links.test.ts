@@ -8,6 +8,7 @@ const row = (id: string, name: string, parent: string | null): Portfolio => ({
   name,
   parent_id: parent,
   target_pct: null,
+  targets_enabled: true,
   created_at: "2026-01-01T00:00:00Z",
 });
 

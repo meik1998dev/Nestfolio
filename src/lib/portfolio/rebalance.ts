@@ -129,7 +129,9 @@ export function rebalanceLevel(parent: {
  * Recursively compute rebalance levels for the whole forest. The synthetic
  * top-level "Total" level treats every root portfolio as a sibling (their
  * `target_pct` is relative to total assigned value). Then one level per node
- * that has children. Levels with no children are omitted.
+ * that has children. Levels with no children are omitted, and so are nodes
+ * with the target feature switched off (`targetsEnabled === false`) — their
+ * children's targets are not part of the policy.
  */
 export function rebalanceTree(roots: PortfolioNode[]): RebalanceLevel[] {
   const levels: RebalanceLevel[] = [];
@@ -147,7 +149,7 @@ export function rebalanceTree(roots: PortfolioNode[]): RebalanceLevel[] {
   }
 
   const visit = (node: PortfolioNode) => {
-    if (node.children.length > 0) {
+    if (node.children.length > 0 && node.targetsEnabled !== false) {
       levels.push(
         rebalanceLevel({
           id: node.id,
@@ -156,8 +158,10 @@ export function rebalanceTree(roots: PortfolioNode[]): RebalanceLevel[] {
           children: node.children,
         }),
       );
-      for (const child of node.children) visit(child);
     }
+    // Recurse regardless: the setting is not inherited, so a sub-portfolio of a
+    // disabled node can still run its own targets.
+    for (const child of node.children) visit(child);
   };
   for (const root of roots) visit(root);
 

@@ -23,6 +23,7 @@ function pf(
     name,
     parent_id: parentId,
     target_pct: targetPct,
+    targets_enabled: true,
     created_at: "2026-01-01T00:00:00Z",
   };
 }
@@ -289,5 +290,33 @@ describe("siblingTargetsValid", () => {
   it("rejects a set that doesn't sum to 100", () => {
     expect(siblingTargetsValid([70, 20])).toBe(false);
     expect(siblingTargetsValid([50, 60])).toBe(false);
+  });
+});
+
+// --- Per-portfolio target switch ------------------------------------------
+
+describe("rebalanceTree — targets_enabled switch", () => {
+  it("skips a switched-off node's level but keeps its descendants' levels", () => {
+    // root → mid (targets OFF) → leaf (targets ON, has its own children).
+    const rows: Portfolio[] = [
+      pf("root", "Root"),
+      { ...pf("mid", "Mid", "root", 100), targets_enabled: false },
+      pf("leaf", "Leaf", "mid", 60),
+      pf("deep-a", "Deep A", "leaf", 50),
+      pf("deep-b", "Deep B", "leaf", 50),
+    ];
+    const a = hold("deep-a");
+    const b = hold("deep-b");
+    const levels = rebalanceTree(
+      tree(rows, [
+        [a, 600],
+        [b, 400],
+      ]),
+    );
+    const parents = levels.map((l) => l.parentId);
+    expect(parents).toContain("root"); // root is on → its children level stays
+    expect(parents).not.toContain("mid"); // mid is off → no level for it
+    expect(parents).toContain("leaf"); // not inherited → leaf still rebalances
+    expect(entry(levelFor(levels, "leaf"), "deep-a").driftPct).toBeCloseTo(10);
   });
 });

@@ -75,6 +75,11 @@ export interface PortfolioDetail {
   depth: number;
   /** Rolled-up USD value of the whole subtree. */
   totalValue: number;
+  /**
+   * Is the target / rebalancing feature on for this portfolio? When false the
+   * allocation slices carry no targets and the page hides every target column.
+   */
+  targetsEnabled: boolean;
   /** Allocation of subtree holdings by asset, with optional targets + drift. */
   allocation: AllocationSlice[];
   /** PnL rollup over the subtree's positions. */
@@ -205,13 +210,18 @@ export const getPortfolioDetail = cache(
     // --- Value + allocation (ONE LEVEL: child portfolios + own holdings) ---
     const totalValue = node.totalValue;
     const shareOf = (v: number) => (totalValue > 0 ? v / totalValue : 0);
+    // Targets switched off for this portfolio → every slice reads as untargeted,
+    // which also removes the target ring and the alignment score downstream.
+    const targetsEnabled = node.targetsEnabled;
+    const targetOf = (target: number | null) =>
+      targetsEnabled ? target : null;
     const driftOf = (share: number, target: number | null) =>
-      target != null ? share * 100 - target : null;
+      targetsEnabled && target != null ? share * 100 - target : null;
 
     // Each immediate sub-portfolio rolls up into a single slice; its target is the
     // portfolio's own target % (relative to this parent).
     const portfolioSlices: AllocationSlice[] = node.children
-      .filter((c) => c.totalValue > 0 || c.targetPct != null)
+      .filter((c) => c.totalValue > 0 || targetOf(c.targetPct) != null)
       .map((c) => {
         const share = shareOf(c.totalValue);
         return {
@@ -223,14 +233,17 @@ export const getPortfolioDetail = cache(
           label: c.name,
           value: c.totalValue,
           share,
-          targetPct: c.targetPct,
+          targetPct: targetOf(c.targetPct),
           driftPct: driftOf(share, c.targetPct),
         };
       });
 
     // Holdings attached DIRECTLY to this node (not to a sub-portfolio).
     const holdingSlices: AllocationSlice[] = node.holdings
-      .filter((h) => (holdingValues.get(h.id) ?? 0) > 0 || h.target_pct != null)
+      .filter(
+        (h) =>
+          (holdingValues.get(h.id) ?? 0) > 0 || targetOf(h.target_pct) != null,
+      )
       .map((h) => {
         const value = holdingValues.get(h.id) ?? 0;
         const share = shareOf(value);
@@ -243,7 +256,7 @@ export const getPortfolioDetail = cache(
           label: resolveToken(h.asset).displayName,
           value,
           share,
-          targetPct: h.target_pct,
+          targetPct: targetOf(h.target_pct),
           driftPct: driftOf(share, h.target_pct),
         };
       });
@@ -312,6 +325,7 @@ export const getPortfolioDetail = cache(
       name: node.name,
       depth: node.depth,
       totalValue,
+      targetsEnabled,
       allocation,
       pnl,
       pnlTickers,

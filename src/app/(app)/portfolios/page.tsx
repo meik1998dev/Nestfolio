@@ -122,7 +122,9 @@ async function PortfoliosContent() {
   const levels = rebalanceTree(roots);
 
   const unassigned = holdings.filter((h) => !h.portfolio_id);
-  const anyTargets = portfolios.some((p) => p.target_pct != null);
+  // Levels worth showing: at least one targeted child, and the parent has the
+  // target feature on (rebalanceTree already drops the switched-off parents).
+  const visibleLevels = levels.filter((l) => l.targetedChildren > 0);
 
   return (
     <>
@@ -191,6 +193,13 @@ async function PortfoliosContent() {
                       ? (node.totalValue / parentValue) * 100
                       : null;
                   const portfolio = portfolios.find((p) => p.id === node.id)!;
+                  // A node's target is owned by its parent, so it only counts
+                  // when the parent has the target feature on. Roots always do.
+                  const parentTargetsOn =
+                    node.parentId == null ||
+                    (portfolios.find((p) => p.id === node.parentId)
+                      ?.targets_enabled ??
+                      true);
                   return (
                     <TableRow key={node.id}>
                       <TableCell>
@@ -210,9 +219,21 @@ async function PortfoliosContent() {
                         </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-right tabular-nums">
-                        {node.targetPct != null
-                          ? formatPct(node.targetPct)
-                          : "—"}
+                        {!parentTargetsOn ? (
+                          <span
+                            className="text-xs"
+                            title={`Targets are switched off inside ${
+                              portfolios.find((p) => p.id === node.parentId)
+                                ?.name ?? "the parent"
+                            }`}
+                          >
+                            off
+                          </span>
+                        ) : node.targetPct != null ? (
+                          formatPct(node.targetPct)
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-right tabular-nums">
                         {pctOfParent != null ? formatPct(pctOfParent) : "—"}
@@ -257,81 +278,71 @@ async function PortfoliosContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8">
-            {!anyTargets ? (
+            {visibleLevels.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 Set a target % on portfolios (edit a node) to see rebalancing
-                advice. Siblings should sum to 100%.
+                advice. Siblings should sum to 100%. Portfolios with targets
+                switched off are not shown here.
               </p>
             ) : (
-              levels
-                .filter((l) => l.targetedChildren > 0)
-                .map((level) => (
-                  <div
-                    key={level.parentId ?? "__total__"}
-                    className="space-y-2"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold">
-                        {level.parentName}
-                        <span className="text-muted-foreground ml-2 font-normal tabular-nums">
-                          {formatUSD(level.parentValue)}
-                        </span>
-                      </h3>
-                      {!level.targetsValid && (
-                        <Badge variant="destructive" className="gap-1">
-                          <TriangleAlert className="size-3" />
-                          Targets sum to {formatPct(level.targetSum)} (should be
-                          100%)
-                        </Badge>
-                      )}
-                    </div>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Holding / sub-portfolio</TableHead>
-                          <TableHead className="text-right">Target</TableHead>
-                          <TableHead className="text-right">Actual</TableHead>
-                          <TableHead className="text-right">Drift</TableHead>
-                          <TableHead className="text-right">
-                            Suggestion
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {level.children.map((c) => (
-                          <TableRow key={c.id}>
-                            <TableCell className="font-medium">
-                              {c.name}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-right tabular-nums">
-                              {c.targetPct != null
-                                ? formatPct(c.targetPct)
-                                : "—"}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {c.actualPct != null
-                                ? formatPct(c.actualPct)
-                                : "—"}
-                            </TableCell>
-                            <TableCell
-                              className={cn(
-                                "text-right tabular-nums",
-                                c.driftPct != null && pnlColor(c.driftPct),
-                              )}
-                            >
-                              {c.driftPct != null
-                                ? formatPct(c.driftPct, { signed: true })
-                                : "—"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <TradeSuggestion entry={c} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+              visibleLevels.map((level) => (
+                <div key={level.parentId ?? "__total__"} className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">
+                      {level.parentName}
+                      <span className="text-muted-foreground ml-2 font-normal tabular-nums">
+                        {formatUSD(level.parentValue)}
+                      </span>
+                    </h3>
+                    {!level.targetsValid && (
+                      <Badge variant="destructive" className="gap-1">
+                        <TriangleAlert className="size-3" />
+                        Targets sum to {formatPct(level.targetSum)} (should be
+                        100%)
+                      </Badge>
+                    )}
                   </div>
-                ))
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Holding / sub-portfolio</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
+                        <TableHead className="text-right">Actual</TableHead>
+                        <TableHead className="text-right">Drift</TableHead>
+                        <TableHead className="text-right">Suggestion</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {level.children.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium">
+                            {c.name}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-right tabular-nums">
+                            {c.targetPct != null ? formatPct(c.targetPct) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {c.actualPct != null ? formatPct(c.actualPct) : "—"}
+                          </TableCell>
+                          <TableCell
+                            className={cn(
+                              "text-right tabular-nums",
+                              c.driftPct != null && pnlColor(c.driftPct),
+                            )}
+                          >
+                            {c.driftPct != null
+                              ? formatPct(c.driftPct, { signed: true })
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <TradeSuggestion entry={c} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))
             )}
           </CardContent>
         </Card>

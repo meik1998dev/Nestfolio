@@ -226,6 +226,7 @@ describe("buildContribTree", () => {
     name: id,
     parent_id: parentId,
     target_pct: targetPct,
+    targets_enabled: true,
     created_at: "2026-01-01T00:00:00Z",
   });
   const hold = (
@@ -256,10 +257,7 @@ describe("buildContribTree", () => {
       ["h-nvda", 600],
       ["h-aapl", 400],
     ]);
-    const tree = rollupValues(
-      buildPortfolioTree(portfolios, holdings),
-      values,
-    );
+    const tree = rollupValues(buildPortfolioTree(portfolios, holdings), values);
     const contribTree = buildContribTree(tree, values);
 
     const plan = planContribution(contribTree, 100);
@@ -281,14 +279,60 @@ describe("buildContribTree", () => {
       ["h-nvda", 600],
       ["h-aapl", 400],
     ]);
-    const tree = rollupValues(
-      buildPortfolioTree(portfolios, holdings),
-      values,
-    );
+    const tree = rollupValues(buildPortfolioTree(portfolios, holdings), values);
     const plan = planContribution(buildContribTree(tree, values), 200);
     // newTotal 1200: NVDA target 300 (over → 0), AAPL target 900 (need 500).
     // C 200 < 500 → all 200 to AAPL.
     expect(entry(plan, "h-aapl").add).toBeCloseTo(200, 6);
     expect(entry(plan, "h-nvda").add).toBeCloseTo(0, 6);
+  });
+});
+
+// --- Per-portfolio target switch ------------------------------------------
+
+describe("buildContribTree — targets_enabled switch", () => {
+  it("drops the targets inside a switched-off portfolio only", () => {
+    const base = {
+      user_id: "u1",
+      target_pct: null as number | null,
+      targets_enabled: true,
+      created_at: "2026-01-01T00:00:00Z",
+    };
+    const portfolios: Portfolio[] = [
+      { ...base, id: "root", name: "root", parent_id: null },
+      {
+        ...base,
+        id: "off",
+        name: "off",
+        parent_id: "root",
+        target_pct: 40,
+        targets_enabled: false,
+      },
+      { ...base, id: "child", name: "child", parent_id: "off", target_pct: 70 },
+    ];
+    const holdings: Holding[] = [
+      {
+        id: "h1",
+        user_id: "u1",
+        portfolio_id: "off",
+        asset: "NVDA",
+        amount: 1,
+        source: "manual",
+        wallet_ref: null,
+        target_pct: 30,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+    ];
+    const values = new Map([["h1", 100]]);
+    const tree = buildContribTree(
+      rollupValues(buildPortfolioTree(portfolios, holdings), values),
+      values,
+    );
+    const off = tree[0].children.find((c) => c.id === "off")!;
+    // Its own target (owned by root, which is on) survives…
+    expect(off.targetPct).toBe(40);
+    // …but everything inside it reads as untargeted.
+    expect(off.children.find((c) => c.id === "child")!.targetPct).toBeNull();
+    expect(off.children.find((c) => c.id === "h1")!.targetPct).toBeNull();
   });
 });

@@ -233,7 +233,12 @@ function allocateLevel(
 
   if (round) {
     return {
-      adds: reconcileRounding(adds, contribution, round, targeted.map((t) => t.i)),
+      adds: reconcileRounding(
+        adds,
+        contribution,
+        round,
+        targeted.map((t) => t.i),
+      ),
       shortfall,
     };
   }
@@ -298,20 +303,29 @@ function hasTargetInSubtree(node: ContribInputNode): boolean {
  * each portfolio's directly-attached holdings in as leaf children (sorted by
  * value, biggest first). A holding carries its own `target_pct` (relative to its
  * portfolio), so the engine can recommend the exact dollars to buy of each one.
+ *
+ * A portfolio with the target feature switched off (`targetsEnabled === false`)
+ * contributes no targets from INSIDE it: its direct children and its holdings
+ * are mapped as untargeted, so the planner leaves them alone. The node's own
+ * target (owned by its parent) is untouched — the setting is not inherited.
  */
 export function buildContribTree(
   roots: PortfolioNode[],
   holdingValues: Map<string, number>,
 ): ContribInputNode[] {
   const mapNode = (n: PortfolioNode): ContribInputNode => {
-    const childPortfolios = n.children.map(mapNode);
+    const targetsOn = n.targetsEnabled !== false;
+    const childPortfolios = n.children.map((c) => {
+      const mapped = mapNode(c);
+      return targetsOn ? mapped : { ...mapped, targetPct: null };
+    });
     const holdingLeaves: ContribInputNode[] = n.holdings
       .map((h) => ({
         id: h.id,
         name: h.asset,
         depth: n.depth + 1,
         parentId: n.id,
-        targetPct: h.target_pct,
+        targetPct: targetsOn ? h.target_pct : null,
         totalValue: holdingValues.get(h.id) ?? 0,
         children: [] as ContribInputNode[],
       }))

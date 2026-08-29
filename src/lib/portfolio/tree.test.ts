@@ -24,6 +24,7 @@ function pf(
     name,
     parent_id: parentId,
     target_pct: targetPct,
+    targets_enabled: true,
     created_at: "2026-01-01T00:00:00Z",
   };
 }

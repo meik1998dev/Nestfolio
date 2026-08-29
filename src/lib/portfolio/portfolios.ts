@@ -33,6 +33,17 @@ function parseTargetPct(raw: FormDataEntryValue | null): number | null {
 }
 
 /**
+ * Read the "targets enabled" checkbox. An unchecked checkbox posts nothing, so
+ * a missing key means OFF — forms must always include the field.
+ */
+function parseTargetsEnabled(raw: FormDataEntryValue | null): boolean {
+  const str = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  return str === "on" || str === "true" || str === "1";
+}
+
+/**
  * All portfolios for the user, oldest first (stable ordering for the tree).
  *
  * Wrapped in React `cache()` so a single request that reads the portfolio list
@@ -80,13 +91,14 @@ export async function createPortfolio(formData: FormData): Promise<void> {
   const parentRaw = String(formData.get("parent_id") ?? "").trim();
   const parent_id = parentRaw === "" || parentRaw === "none" ? null : parentRaw;
   const target_pct = parseTargetPct(formData.get("target_pct"));
+  const targets_enabled = parseTargetsEnabled(formData.get("targets_enabled"));
 
   if (!name) throw new Error("Portfolio name is required");
 
   const { supabase, userId } = await requireUserId();
   const { error } = await supabase
     .from("portfolios")
-    .insert({ user_id: userId, name, parent_id, target_pct });
+    .insert({ user_id: userId, name, parent_id, target_pct, targets_enabled });
   if (error) throw new Error(error.message);
 
   revalidatePath("/portfolios");
@@ -103,6 +115,7 @@ export async function updatePortfolio(formData: FormData): Promise<void> {
   const parentRaw = String(formData.get("parent_id") ?? "").trim();
   const parent_id = parentRaw === "" || parentRaw === "none" ? null : parentRaw;
   const target_pct = parseTargetPct(formData.get("target_pct"));
+  const targets_enabled = parseTargetsEnabled(formData.get("targets_enabled"));
 
   const { supabase } = await requireUserId();
 
@@ -116,11 +129,34 @@ export async function updatePortfolio(formData: FormData): Promise<void> {
 
   const { error } = await supabase
     .from("portfolios")
-    .update({ name, parent_id, target_pct })
+    .update({ name, parent_id, target_pct, targets_enabled })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
   revalidatePath("/portfolios");
+}
+
+/**
+ * Turn the target / rebalancing feature on or off for one portfolio (quick
+ * toggle on the detail page). Only touches this node — the setting is not
+ * inherited by sub-portfolios.
+ */
+export async function setPortfolioTargetsEnabled(
+  formData: FormData,
+): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Portfolio id is required");
+  const targets_enabled = parseTargetsEnabled(formData.get("targets_enabled"));
+
+  const { supabase } = await requireUserId();
+  const { error } = await supabase
+    .from("portfolios")
+    .update({ targets_enabled })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/portfolios");
+  revalidatePath(`/portfolios/${id}`);
 }
 
 /**

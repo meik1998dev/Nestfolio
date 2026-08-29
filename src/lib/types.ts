@@ -24,6 +24,13 @@ export interface Portfolio {
   parent_id: string | null;
   /** Target allocation %, relative to its parent's value (siblings sum to 100). */
   target_pct: number | null;
+  /**
+   * Is the target / rebalancing feature on INSIDE this portfolio? When false,
+   * the targets of its direct children and of its own holdings are ignored and
+   * hidden everywhere. Its own `target_pct` (owned by the parent) still counts.
+   * Not inherited — each portfolio carries its own setting.
+   */
+  targets_enabled: boolean;
   created_at: string;
 }
 

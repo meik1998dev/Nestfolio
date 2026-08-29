@@ -63,6 +63,7 @@ import { PnlStatTabs } from "@/components/pnl-stat-tabs";
 import { TargetAllocationPie } from "./allocation";
 import { TargetInput } from "./target-input";
 import { PortfolioWhatIf } from "./what-if";
+import { TargetsToggle } from "./targets-toggle";
 
 export async function generateMetadata({
   params,
@@ -170,7 +171,9 @@ async function PortfolioDetailContent({
   ];
 
   // Sum of every target allocation in this table — a quick check that the plan
-  // adds up to 100%. Holdings with no target count as 0.
+  // adds up to 100%. Holdings with no target count as 0. Only meaningful while
+  // the target feature is on for this portfolio.
+  const targetsOn = detail.targetsEnabled;
   const targetSum = detail.holdings.reduce(
     (sum, h) => sum + (h.holding.target_pct ?? 0),
     0,
@@ -234,12 +237,17 @@ async function PortfolioDetailContent({
         {/* Allocation */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <PieIcon className="text-muted-foreground size-4" />
-              Allocation
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <PieIcon className="text-muted-foreground size-4" />
+                Allocation
+              </CardTitle>
+              <TargetsToggle portfolioId={detail.id} enabled={targetsOn} />
+            </div>
             <CardDescription>
-              Live allocation (inner ring) vs target (outer ring).
+              {targetsOn
+                ? "Live allocation (inner ring) vs target (outer ring)."
+                : "Live allocation. Targets are switched off for this portfolio."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -265,7 +273,7 @@ async function PortfolioDetailContent({
             </CardTitle>
             <CardDescription className="flex flex-wrap items-center justify-between gap-2">
               <span>Positions in this portfolio and its sub-portfolios.</span>
-              {detail.holdings.length > 0 && (
+              {targetsOn && detail.holdings.length > 0 && (
                 <span
                   className={cn(
                     "tabular-nums",
@@ -332,12 +340,16 @@ async function PortfolioDetailContent({
                     align: "right",
                     sortable: true,
                   },
-                  {
-                    key: "target",
-                    header: "Target",
-                    align: "right",
-                    headClassName: "w-28",
-                  },
+                  ...(targetsOn
+                    ? [
+                        {
+                          key: "target",
+                          header: "Target",
+                          align: "right" as const,
+                          headClassName: "w-28",
+                        },
+                      ]
+                    : []),
                 ]}
                 rows={detail.holdings.map((h) => ({
                   key: h.holding.id,
@@ -428,12 +440,16 @@ async function PortfolioDetailContent({
                           : "—"}
                       </span>
                     ),
-                    target: (
-                      <TargetInput
-                        holdingId={h.holding.id}
-                        target={h.holding.target_pct}
-                      />
-                    ),
+                    ...(targetsOn
+                      ? {
+                          target: (
+                            <TargetInput
+                              holdingId={h.holding.id}
+                              target={h.holding.target_pct}
+                            />
+                          ),
+                        }
+                      : {}),
                   },
                 }))}
               />

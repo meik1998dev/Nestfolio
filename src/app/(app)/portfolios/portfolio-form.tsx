@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Portfolio } from "@/lib/types";
 import { createPortfolio } from "@/lib/portfolio/portfolios";
+import { TargetsEnabledField } from "./edit-portfolio";
 
 const NONE = "none";
 
@@ -104,6 +105,7 @@ export function PortfolioForm({ portfolios }: { portfolios: Portfolio[] }) {
               placeholder="e.g. 60"
             />
           </div>
+          <TargetsEnabledField defaultChecked />
           <DialogFooter>
             <Button type="submit">Create portfolio</Button>
           </DialogFooter>

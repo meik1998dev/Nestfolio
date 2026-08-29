@@ -119,11 +119,40 @@ export function EditPortfolioButton({
               placeholder="Leave blank for no target"
             />
           </div>
+          <TargetsEnabledField defaultChecked={portfolio.targets_enabled} />
           <DialogFooter>
             <Button type="submit">Save changes</Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The per-portfolio on/off switch for the target feature. Unchecked posts
+ * nothing, which the server action reads as OFF.
+ */
+export function TargetsEnabledField({
+  defaultChecked,
+}: {
+  defaultChecked: boolean;
+}) {
+  return (
+    <div className="grid gap-1">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          name="targets_enabled"
+          defaultChecked={defaultChecked}
+          className="accent-primary size-4"
+        />
+        Use target allocations inside this portfolio
+      </label>
+      <p className="text-muted-foreground text-xs">
+        Off hides target %, drift, alignment and rebalancing for this
+        portfolio&apos;s holdings and its direct sub-portfolios.
+      </p>
+    </div>
   );
 }

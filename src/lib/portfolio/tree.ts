@@ -16,6 +16,11 @@ export interface PortfolioNode {
   parentId: string | null;
   /** Target % relative to the parent (siblings should sum to 100). */
   targetPct: number | null;
+  /**
+   * Is the target feature on inside this node? False = the targets of its
+   * children and of its own holdings are ignored (see `Portfolio.targets_enabled`).
+   */
+  targetsEnabled: boolean;
   /** Depth from a root (root = 0). */
   depth: number;
   /** Holdings directly attached to this node (not descendants). */
@@ -46,6 +51,7 @@ export function buildPortfolioTree(
       name: p.name,
       parentId: p.parent_id,
       targetPct: p.target_pct,
+      targetsEnabled: p.targets_enabled !== false,
       depth: 0,
       holdings: [],
       children: [],
