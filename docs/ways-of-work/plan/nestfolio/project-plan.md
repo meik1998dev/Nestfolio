@@ -33,7 +33,7 @@ all-levels rebalancing, history charts, monthly reviews, and projections.
 ### Risk Assessment
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
-| ~~Portfolio API free-tier limits~~ **RESOLVED** | Sync gaps | **Moralis** free tier (40k CU/day) covers BSC at $0 for one user; behind `WalletProvider`. Etherscan V2 is NOT free for BSC. (Open Q #2 closed) |
+| ~~Portfolio API free-tier limits~~ **RESOLVED** | Sync gaps | **NodeReal MegaNode** free tier covers BSC at $0 for one user; behind `WalletProvider`. Moralis ended free usage 2026-09-01; Etherscan V2 is NOT free for BSC. (Open Q #2 closed) |
 | ~~Tokenized-stock contracts not resolving~~ **RESOLVED** | Wrong stock values | Stocks are **Ondo** BEP-20 (`…on` suffix) → strip to equity ticker; manual override. (Open Q #4 closed) |
 | **Tokenized-stock DEX price is unreliable** (thin liquidity) | Net worth overstated ~2.5× | **Never** value stocks by token/DEX price; use the underlying equity feed (EN4.3). Sanity-check DEX-vs-real divergence. |
 | **Cost basis is mostly off-chain** (1-leg Ondo deliveries paid via Binance) | Wrong PnL | Price each delivery at historical equity price (Option A); cash-reconciliation guard; optional Binance import for exact fills. |

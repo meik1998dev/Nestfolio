@@ -14,7 +14,7 @@ flow reconciled to the penny (see §6), which proves the transaction parsing is 
 
 | Need | Source | Notes |
 |------|--------|-------|
-| Balances, transfers (history), token metadata | **Moralis** Web3 Data API (free tier, 40k CU/day) | BSC supported. The ONLY chain data source. |
+| Balances, transfers (history), token metadata | **NodeReal MegaNode** enhanced JSON-RPC (`nr_getTokenHoldings`, `nr_getAssetTransfers`; free tier) | BSC-native. The ONLY chain data source. Replaced Moralis on 2026-09-02 after Moralis ended free usage. |
 | **Price** (live + historical) for valuation | **Stock price feed** (NOT the token's on-chain price) | tokenized-stock DEX price is unreliable — see §2 |
 
 **Critical rule:** never value a tokenized stock by its on-chain/DEX price. Those

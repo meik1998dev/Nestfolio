@@ -64,7 +64,7 @@ export default function WalletPage() {
     <>
       <PageHeader
         title="Wallet"
-        description="Read-only sync of a public BNB-chain address via Moralis. Synced tokens land in the Unassigned bucket — assign them in Portfolios."
+        description="Read-only sync of a public BNB-chain address via NodeReal. Synced tokens land in the Unassigned bucket — assign them in Portfolios."
       >
         <Suspense fallback={<Skeleton className="h-9 w-24" />}>
           <SyncButtonLoader />

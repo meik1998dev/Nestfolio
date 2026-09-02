@@ -199,10 +199,10 @@ class MockWallet implements WalletProvider {
 
 class ThrowingWallet implements WalletProvider {
   getTransfers(): Promise<TransfersPage> {
-    throw new Error("Moralis 429 rate limited");
+    throw new Error("NodeReal 429 rate limited");
   }
   getBalances(): Promise<WalletBalance[]> {
-    throw new Error("Moralis 429 rate limited");
+    throw new Error("NodeReal 429 rate limited");
   }
 }
 

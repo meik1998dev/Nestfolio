@@ -33,8 +33,8 @@ export const env = {
       "SUPABASE_SERVICE_ROLE_KEY",
       process.env.SUPABASE_SERVICE_ROLE_KEY,
     ),
-  moralisApiKey: () =>
-    serverOnly("MORALIS_API_KEY", process.env.MORALIS_API_KEY),
+  noderealApiKey: () =>
+    serverOnly("NODEREAL_API_KEY", process.env.NODEREAL_API_KEY),
   finnhubApiKey: () => process.env.FINNHUB_API_KEY ?? "",
   twelveDataApiKey: () => process.env.TWELVE_DATA_API_KEY ?? "",
 };
