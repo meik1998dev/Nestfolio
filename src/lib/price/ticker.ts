@@ -38,7 +38,7 @@ const STABLECOINS = new Set(["USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD"]);
  * stablecoin; they just aren't crypto. Lets a user hold "USD cash" distinct from
  * "USDT" under the same Cash bucket.
  */
-const FIAT = new Set(["USD", "CASH"]);
+const FIAT = new Set(["USD", "CASH", "USD CASH"]);
 
 /**
  * Known crypto symbol → Yahoo pricing pair. BNB and PAXG are deep-liquidity so
@@ -51,6 +51,7 @@ const CRYPTO_PAIRS: Record<string, string> = {
   BTCB: "BTC-USD",
   ETH: "ETH-USD",
   WETH: "ETH-USD",
+  SOL: "SOL-USD",
   PAXG: "PAXG-USD",
 };
 

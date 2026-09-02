@@ -21,8 +21,8 @@ export interface PerfPoint {
   returnPct?: number | null;
   /** "What-if": value of the same cash flows mirrored into SPY (USD). */
   spyValue?: number | null;
-  /** S&P 500 index buy-and-hold return, rebased to the chart's start:
-   *  spyClose(d) / spyClose(start) − 1. (Return % tab.) */
+  /** "What-if" return of the SPY mirror on the same deployed cost as
+   *  `returnPct`: spyTotal / investedCapital. (Return % tab.) */
   spyReturnPct?: number | null;
   /** "What-if" total P&L of the SPY mirror (realized + unrealized), for the P&L tab. */
   spyTotal?: number | null;

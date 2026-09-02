@@ -48,6 +48,7 @@ describe("isFiat / isCashLike", () => {
   it("treats plain fiat (USD / CASH) as cash-like, not a stablecoin", () => {
     expect(isFiat("USD")).toBe(true);
     expect(isFiat("cash")).toBe(true);
+    expect(isFiat("USD CASH")).toBe(true);
     expect(isStablecoin("USD")).toBe(false); // USD is fiat, not a stablecoin
     expect(isCashLike("USD")).toBe(true);
     expect(isCashLike("USDT")).toBe(true); // stablecoins are cash-like too
@@ -78,6 +79,7 @@ describe("resolveToken", () => {
   it("resolves crypto to a Yahoo pair", () => {
     expect(resolveToken("BNB").ticker).toBe("BNB-USD");
     expect(resolveToken("BTCB").ticker).toBe("BTC-USD");
+    expect(resolveToken("SOL").ticker).toBe("SOL-USD");
   });
 
   it("treats PAXG as gold via its deep-liquidity pair", () => {

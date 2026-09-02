@@ -70,8 +70,9 @@ export function PerformanceChart({
     series[0].date.slice(0, 4) !== series[series.length - 1].date.slice(0, 4);
   const data = series;
 
-  // Benchmark overlays on all three views: $ what-if (Value), money-weighted
-  // return (Return %), and what-if P&L (P&L).
+  // Benchmark overlays on all three views. Every one is the same "what-if":
+  // your cash flows mirrored into SPY on the same dates ($ value, return on
+  // the same deployed cost, and P&L).
   const hasBench = data.some(
     (p) => p.spyValue != null || p.spyReturnPct != null,
   );
@@ -332,7 +333,7 @@ export function PerformanceChart({
                       />
                       {showBench && (
                         <Row
-                          name="S&P 500"
+                          name="S&P 500 (what-if)"
                           value={fmtPct(payload[0].payload.spyReturnPct)}
                         />
                       )}

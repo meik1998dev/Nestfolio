@@ -112,6 +112,73 @@ export async function ensurePrices(
   );
 }
 
+/**
+ * Fill a chart range with one upstream request per ticker. Existing stored
+ * closes stay in the map and win on duplicate dates.
+ */
+export async function ensurePriceRange(
+  map: Map<string, number>,
+  ticker: string,
+  start: string,
+  end: string,
+): Promise<void> {
+  const endStored = lastStoredOnOrBefore(map, end);
+  const endGap = endStored
+    ? (Date.parse(end) - Date.parse(endStored)) / DAY_MS
+    : Number.POSITIVE_INFINITY;
+  const hasStart = priceOnOrBefore(map, start) !== null;
+  if (hasStart && endGap <= MAX_FORWARD_FILL_DAYS && !hasInteriorGap(map, start, end)) return;
+
+  const provider = priceProvider();
+  if (provider.histRange) {
+    const fetched = await provider.histRange(ticker, start, end);
+    for (const [date, close] of fetched) if (!map.has(date)) map.set(date, close);
+    return;
+  }
+  await ensurePrices(map, ticker, sampleDates(start, end, 1));
+}
+
+/**
+ * True when some day inside [start, end] would forward-fill across more than
+ * MAX_FORWARD_FILL_DAYS. Such a hole turns a week of market moves into one
+ * fake jump on the day the data resumes, which inflates every risk figure.
+ */
+export function hasInteriorGap(
+  map: Map<string, number>,
+  start: string,
+  end: string,
+): boolean {
+  const stored = [...map.keys()].filter((d) => d >= start && d <= end).sort();
+  let previous = lastStoredOnOrBefore(map, start) ?? start;
+  for (const date of [...stored, end]) {
+    if ((Date.parse(date) - Date.parse(previous)) / DAY_MS > MAX_FORWARD_FILL_DAYS) return true;
+    previous = date;
+  }
+  return false;
+}
+
+/** Saturday or Sunday in UTC. */
+export function isWeekend(date: string): boolean {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/** Crypto pairs trade every day; anything else is an exchange-listed market. */
+export function tradesOnWeekends(ticker: string): boolean {
+  return ticker.toUpperCase().endsWith("-USD");
+}
+
+/**
+ * Drop weekend-dated closes for exchange-listed tickers. A weekend row is a
+ * mislabelled Friday close (single-date fetches store the last close under the
+ * requested date), so keeping it moves a day's return onto a Saturday and can
+ * double it against a later real close. Weekday rows forward-fill instead.
+ */
+export function dropWeekendCloses(map: Map<string, number>, ticker: string): void {
+  if (tradesOnWeekends(ticker)) return;
+  for (const date of [...map.keys()]) if (isWeekend(date)) map.delete(date);
+}
+
 /** Last known close on or before `date` (forward-fills weekends/holidays). */
 export function priceOnOrBefore(
   map: Map<string, number>,

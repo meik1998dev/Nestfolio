@@ -53,6 +53,12 @@ export interface PriceProvider {
   livePrice(ticker: string): Promise<number | null>;
   /** Historical daily close for a (ticker, date). `date` is YYYY-MM-DD. */
   histPrice(ticker: string, date: string): Promise<number | null>;
+  /** Daily closes for an inclusive date range, fetched in one upstream call. */
+  histRange?(
+    ticker: string,
+    start: string,
+    end: string,
+  ): Promise<Map<string, number>>;
   /** Spot gold price per gram in USD (XAU spot ÷ grams/oz). */
   goldPerGram(): Promise<number | null>;
 }
@@ -154,6 +160,43 @@ export class YahooPriceProvider implements PriceProvider {
 
     await this.writeHistory(ticker, date, close);
     return close;
+  }
+
+  /**
+   * Fetch a full daily range in one Yahoo request. This is used by performance
+   * pages, where calling `histPrice` hundreds of times makes the page too slow.
+   */
+  async histRange(
+    ticker: string,
+    start: string,
+    end: string,
+  ): Promise<Map<string, number>> {
+    const closes = new Map<string, number>();
+    try {
+      const exclusiveEnd = new Date(end + "T00:00:00Z");
+      exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+      const res = await this.yahoo.chart(ticker, {
+        period1: start,
+        period2: isoDate(exclusiveEnd),
+        interval: "1d",
+      });
+      const rows = res.quotes
+        .filter((quote): quote is { date: Date; close: number } => quote.close != null)
+        .map((quote) => ({
+          ticker,
+          date: isoDate(quote.date),
+          close: quote.close,
+        }));
+      for (const row of rows) closes.set(row.date, row.close);
+      if (rows.length > 0) {
+        await this.db
+          .from("price_history")
+          .upsert(rows, { onConflict: "ticker,date", ignoreDuplicates: true });
+      }
+    } catch {
+      // Keep the partial/empty map. Callers show a missing-history state.
+    }
+    return closes;
   }
 
   /** Spot gold per gram. Uses the live cache under the GOLD_SPOT_SYMBOL key. */

@@ -32,6 +32,8 @@ import {
   sampleDates,
   loadHistory,
   ensurePrices,
+  ensurePriceRange,
+  dropWeekendCloses,
   priceOnOrBefore,
 } from "@/lib/price/history";
 import type {
@@ -146,9 +148,6 @@ export async function getPortfolioPerformance(
   let spyAt: (d: string) => number | null = () => null;
   let benchTimeline: BenchPoint[] | null = null;
   let spyLiveOrNull: number | null = null;
-  // SPY close on/just before the chart's start — the anchor the Return % index
-  // line rebases to, so it reads as "S&P 500 buy-and-hold since <chart start>".
-  let spyAnchor: number | null = null;
   if (opts.benchmark) {
     const spyStart = earliest ?? startIso;
     const spyMap = await loadHistory(supabase, SPY_TICKER, spyStart, today);
@@ -156,7 +155,6 @@ export async function getPortfolioPerformance(
     await ensurePrices(spyMap, SPY_TICKER, [...axis, ...tradeDays]);
     spyAt = (d) => priceOnOrBefore(spyMap, d);
     benchTimeline = buildBenchmarkTimeline(trades, histLookup, spyAt);
-    spyAnchor = spyAt(startIso);
     const spyLive = await readLivePrices(supabase, [SPY_TICKER]);
     spyLiveOrNull = spyLive.get(SPY_TICKER) ?? null;
   }
@@ -221,21 +219,19 @@ export async function getPortfolioPerformance(
           ? (valueOut + realized) / invested - 1
           : null;
       point.spyValue = spyValue;
-      // Return % tab: the S&P 500 INDEX bought and held from the chart's start —
-      // price(d) / price(start) − 1. The headline "what the market did" (the figure
-      // Yahoo/Google quote), independent of when you added capital.
-      point.spyReturnPct =
-        spyAnchor != null && spyAnchor > 0 && spyNow != null
-          ? spyNow / spyAnchor - 1
-          : null;
-      // Value / P&L tabs keep the dollar "what-if": your exact cash flows mirrored
-      // into SPY (held value, and realized + unrealized P&L). A dollar line has to
-      // track your actual deposits, so it's money-weighted and sits below the index
-      // % above when most capital was deployed recently.
+      // Every tab uses the same "what-if": your exact cash flows mirrored into
+      // SPY on the same dates (held value, and realized + unrealized P&L). The
+      // Return % line divides that mirror's P&L by the same deployed cost as
+      // `returnPct`, so the two lines are a fair "same money, same dates" pair.
+      // (The bare index return would assume all money was in on day one.)
       const spyRealized = b?.spyRealized ?? 0;
       point.spyTotal =
         b != null && spyValue != null
           ? spyValue - b.costDeployed + spyRealized
+          : null;
+      point.spyReturnPct =
+        invested != null && point.spyTotal != null
+          ? point.spyTotal / invested
           : null;
     }
 
@@ -379,7 +375,11 @@ function tickerForRow(
   resolveTicker: (asset: string) => string | null,
 ): string | null {
   if (row.source === "wallet") {
-    return isStablecoin(row.asset) ? null : row.asset.toUpperCase();
+    if (isStablecoin(row.asset)) return null;
+    // Stored wallet rows are usually already pricing tickers. Some older rows
+    // carry a bare crypto symbol (SOL), so normalize it to Yahoo's pair
+    // (SOL-USD). Bare equity tickers still fall back to their stored value.
+    return (resolveToken(row.asset).ticker ?? row.asset).toUpperCase();
   }
   return resolveTicker(row.asset)?.toUpperCase() ?? null;
 }
@@ -435,7 +435,18 @@ export async function loadHistories(
   const histByTicker = new Map<string, Map<string, number>>();
   await Promise.all(
     tickers.map(async (ticker) => {
-      const map = await loadHistory(supabase, ticker, startIso, today);
+      const tickerFirstTrade = trades
+        .filter((trade) => trade.ticker === ticker)
+        .reduce<string | null>(
+          (min, trade) =>
+            min == null || trade.row.date < min ? trade.row.date.slice(0, 10) : min,
+          null,
+        );
+      const tickerStart =
+        tickerFirstTrade && tickerFirstTrade > startIso ? tickerFirstTrade : startIso;
+      const map = await loadHistory(supabase, ticker, tickerStart, today);
+      await ensurePriceRange(map, ticker, tickerStart, today);
+      dropWeekendCloses(map, ticker);
       // Seed captured 1-leg prices so the ledger can price them even if a
       // historical re-fetch fails (and even for legs before startIso).
       for (const { row, ticker: tk } of trades) {
@@ -455,7 +466,10 @@ export async function loadHistories(
             (t.row.type === "delivery" || t.row.type === "send"),
         )
         .map((t) => t.row.date.slice(0, 10));
-      await ensurePrices(map, ticker, [...valuationDates, ...onLegDates]);
+      await ensurePrices(map, ticker, [
+        ...valuationDates.filter((date) => !tickerFirstTrade || date >= tickerFirstTrade),
+        ...onLegDates,
+      ]);
       histByTicker.set(ticker, map);
     }),
   );
@@ -582,7 +596,7 @@ export async function getTimeframePnl(
 }
 
 /** Read cached live prices for the given tickers into a ticker→price map. */
-async function readLivePrices(
+export async function readLivePrices(
   supabase: Awaited<ReturnType<typeof createClient>>,
   tickers: string[],
 ): Promise<Map<string, number>> {

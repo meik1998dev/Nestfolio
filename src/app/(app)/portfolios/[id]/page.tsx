@@ -215,8 +215,8 @@ async function PortfolioDetailContent({
               Performance
             </CardTitle>
             <CardDescription>
-              Value, P&amp;L, and return over time — with an optional S&amp;P
-              500 benchmark.
+              Value, P&amp;L, and return over time. The S&amp;P 500 line shows
+              the same money on the same dates put into the index instead.
             </CardDescription>
           </CardHeader>
           <CardContent>
