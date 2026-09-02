@@ -45,6 +45,7 @@ import { getPnl, type PnlView } from "@/lib/pnl/pnl";
 import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
 import { getCachedUser } from "@/lib/supabase/server";
 import { PerformanceChart } from "@/components/performance-chart";
+import { PerformanceStrip } from "@/components/performance-strip";
 import { AllocationPie } from "./charts";
 import { PnlTimeframeCards } from "./pnl-timeframe-cards";
 import { RecomputeButton } from "./recompute-button";
@@ -237,11 +238,16 @@ async function DashboardBody({
         </CardHeader>
         <CardContent>
           {!performance.empty ? (
-            <PerformanceChart
-              series={performance.series}
-              range={performance.range}
-              basePath="/dashboard"
-            />
+            <div className="space-y-4">
+              <PerformanceChart
+                series={performance.series}
+                range={performance.range}
+                basePath="/dashboard"
+              />
+              <Suspense fallback={<div className="h-14" />}>
+                <PerformanceStrip scopeId="all" range={performance.range} />
+              </Suspense>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
               <p className="font-medium">History is just getting started</p>

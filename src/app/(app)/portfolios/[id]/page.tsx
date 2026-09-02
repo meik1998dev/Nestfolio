@@ -59,6 +59,7 @@ import { parsePerfRange } from "@/lib/insights/performance.types";
 import type { TimeframePnl } from "@/lib/pnl/timeframe.types";
 import { resolveToken } from "@/lib/price/ticker";
 import { PerformanceChart } from "@/components/performance-chart";
+import { PerformanceStrip } from "@/components/performance-strip";
 import { PnlStatTabs } from "@/components/pnl-stat-tabs";
 import { TargetAllocationPie } from "./allocation";
 import { TargetInput } from "./target-input";
@@ -225,11 +226,16 @@ async function PortfolioDetailContent({
                 No priceable trade history for this portfolio yet.
               </p>
             ) : (
-              <PerformanceChart
-                series={performance.series}
-                range={range}
-                basePath={`/portfolios/${id}`}
-              />
+              <div className="space-y-4">
+                <PerformanceChart
+                  series={performance.series}
+                  range={range}
+                  basePath={`/portfolios/${id}`}
+                />
+                <Suspense fallback={<div className="h-14" />}>
+                  <PerformanceStrip scopeId={id} range={range} />
+                </Suspense>
+              </div>
             )}
           </CardContent>
         </Card>
